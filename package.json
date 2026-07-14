@@ -1,0 +1,25 @@
+{
+  "name": "founderbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live autonomous app-business eval: orchestrator, tracing, and replay for an OpenCode agent running a real iOS app business on a dedicated Mac.",
+  "scripts": {
+    "orchestrator": "tsx orchestrator/src/index.ts",
+    "proxy": "tsx tracing/src/proxy-cli.ts",
+    "replay": "node replay/serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import tsx tests/*.test.ts"
+  },
+  "dependencies": {
+    "smol-toml": "^1.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

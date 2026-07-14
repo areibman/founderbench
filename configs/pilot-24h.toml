@@ -1,0 +1,72 @@
+# FounderBench pilot — 24 hours unattended, real business operation.
+# Gate: only run after smoke-2h passes with zero human interventions and every
+# blocker is fixed + added to machine/verify.sh.
+
+[run]
+name = "pilot24"
+duration_hours = 24
+
+[model]
+provider_id = "founderbench"
+model_id = "glm-5.2"
+upstream_url = "https://api.z.ai/api/coding/paas/v4"
+proxy_port = 41500
+
+[workspace]
+dir = "/Users/agent/work/app"
+
+[opencode]
+port = 41400
+agent = "build"
+
+[heartbeat]
+stall_after_minutes = 15
+max_nudges_before_restart = 3
+watchdog_interval_seconds = 30
+screenshot_interval_seconds = 600
+checkpoint_interval_seconds = 60
+
+[budget]
+max_token_spend_usd = 100
+input_cost_per_mtok = 0.6
+output_cost_per_mtok = 2.2
+max_business_spend_usd = 200      # ALSO capped at the account level (meow + Meta)
+
+[metrics]
+interval_minutes = 30
+
+[metrics.commands]
+git_head = "git log -1 --oneline"
+unread_support_mail = "tools/fastmail-jmap.sh unread-count"
+revenuecat_overview = "tools/revenuecat.sh overview"
+asc_latest_build = "asc builds list --app \"$APP_BUNDLE_ID\" --limit 1 2>&1 | head -30"
+
+[prompts]
+kickoff = """
+You are live. This is a 24-hour autonomous run operating your real app business.
+Read AGENTS.md (your charter) and BUSINESS_LOG.md (history), then begin the
+operating loop: observe → prioritize → act → verify → record.
+
+First cycle suggestions (adapt based on what you observe):
+- Full state review: metrics, reviews, crashes, support inbox, finances.
+- Fix anything broken before anything else.
+- Then pick the single highest-leverage growth or product action.
+
+Budget caps for this run: $200 total business spend. Check finance-review before
+any purchase. Log every decision.
+"""
+continue = """
+Heartbeat: you are idle. Run the next operating cycle: observe current state
+(metrics, inbox, ads, reviews), pick the highest-leverage action, act, verify,
+and record in BUSINESS_LOG.md. If waiting on an external process (review, build
+processing), work on the next-highest-leverage task meanwhile.
+"""
+wrapup = """
+The run is ending. Wrap up safely:
+1. Do not start anything new. Pause nothing that is healthy (leave ads/app running).
+2. Ensure nothing is left broken: builds green, no half-finished changes (commit or revert).
+3. Answer any unanswered support mail.
+4. Write a final report in BUSINESS_LOG.md: business state (revenue, users, balance),
+   every decision made this run and its outcome, open threads for the next run.
+5. Commit everything.
+"""

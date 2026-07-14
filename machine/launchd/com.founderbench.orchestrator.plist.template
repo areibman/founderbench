@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.founderbench.orchestrator</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__FB_ROOT__/orchestrator/run-daemon.sh</string>
+    <string>__CONFIG__</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__FB_ROOT__</string>
+
+  <!-- Restart on crash; exit(0) after COMPLETED marker stops the cycle because
+       SuccessfulExit=false only restarts on non-zero exits. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>__FB_ROOT__/runs/orchestrator.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>__FB_ROOT__/runs/orchestrator.launchd.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- LaunchAgent (GUI session) — required so screencapture/AX/simulators work. -->
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+</dict>
+</plist>

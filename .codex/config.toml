@@ -1,0 +1,4 @@
+[mcp_servers.meta-ads]
+url = "https://meta-ads.mcp.pipeboard.co/"
+bearer_token_env_var = "PIPEBOARD_API_TOKEN"
+

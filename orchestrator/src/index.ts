@@ -1,0 +1,398 @@
+/**
+ * FounderBench orchestrator — the process that makes the agent truly autonomous.
+ *
+ * Owns the run lifecycle:
+ *   start proxy → start opencode serve → create/resume session → kickoff prompt →
+ *   continuous work loop (re-prompt on idle) → heartbeat (stall detect, nudge,
+ *   restart) → dialog watchdog → budget + wall-clock enforcement → checkpoints →
+ *   metrics snapshots → graceful end.
+ *
+ * Run under launchd with KeepAlive (machine/80-install-launchd.sh) so the daemon
+ * itself is restarted on crash; on restart it resumes from the checkpoint.
+ *
+ * Usage: npm run orchestrator -- --config configs/pilot-24h.toml [--run-id <resume>]
+ */
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { TraceStore } from "../../tracing/src/trace.ts";
+import { InterceptionProxy } from "../../tracing/src/proxy.ts";
+import { SseCollector, ScreenshotCollector } from "../../tracing/src/collectors.ts";
+import { loadRunConfig, loadCredentialsEnv, FB_ROOT, type RunConfig } from "./config.ts";
+import { OpenCodeServer } from "./opencode.ts";
+import { DialogWatchdog } from "./watchdog.ts";
+import { BudgetMonitor } from "./budget.ts";
+import { MetricsCollector } from "./metrics.ts";
+import { CheckpointStore, type Checkpoint } from "./checkpoint.ts";
+
+type RunState =
+  | "starting"
+  | "running"
+  | "idle"
+  | "stalled"
+  | "blocked-by-dialog"
+  | "restarting"
+  | "wrapping-up"
+  | "completed"
+  | "crashed";
+
+class Orchestrator {
+  private state: RunState = "starting";
+  private sessionId: string | null = null;
+  private nudges = 0;
+  private restarts = 0;
+  private lastPromptAt = 0;
+  private busy = false; // session currently generating (from SSE status events)
+  private ending = false;
+
+  private readonly trace: TraceStore;
+  private readonly proxy: InterceptionProxy;
+  private readonly opencode: OpenCodeServer;
+  private readonly sse: SseCollector;
+  private readonly screenshots: ScreenshotCollector;
+  private readonly watchdog: DialogWatchdog;
+  private readonly budget: BudgetMonitor;
+  private readonly metrics: MetricsCollector;
+  private readonly checkpoints: CheckpointStore;
+  private readonly startedAt: number;
+  private readonly endAt: number;
+
+  constructor(
+    private readonly cfg: RunConfig,
+    readonly runId: string,
+    resumed: Checkpoint | null,
+  ) {
+    this.trace = new TraceStore(join(FB_ROOT, "runs"), runId);
+    this.startedAt = resumed?.startedAt ?? Date.now();
+    this.endAt = resumed?.endAt ?? this.startedAt + cfg.run.duration_hours * 3_600_000;
+    this.restarts = resumed?.restarts ?? 0;
+    this.sessionId = resumed?.sessionId ?? null;
+
+    this.proxy = new InterceptionProxy({
+      port: cfg.model.proxy_port,
+      upstreamUrl: cfg.model.upstream_url,
+      upstreamApiKey: process.env.MODEL_API_KEY,
+      trace: this.trace,
+    });
+    this.opencode = new OpenCodeServer({
+      port: cfg.opencode.port,
+      cwd: cfg.workspace.dir,
+      logDir: join(this.trace.runDir, "logs"),
+      env: { FB_TRACE_DIR: this.trace.runDir },
+    });
+    this.sse = new SseCollector(this.opencode.baseUrl, this.trace);
+    this.screenshots = new ScreenshotCollector(
+      this.trace,
+      cfg.heartbeat.screenshot_interval_seconds * 1000,
+    );
+    this.watchdog = new DialogWatchdog(
+      this.trace,
+      this.screenshots,
+      cfg.heartbeat.watchdog_interval_seconds * 1000,
+    );
+    this.budget = new BudgetMonitor(cfg.budget, this.proxy, this.trace, this.endAt);
+    this.metrics = new MetricsCollector(
+      cfg.metrics.commands,
+      this.trace,
+      this.budget,
+      cfg.metrics.interval_minutes * 60_000,
+      cfg.workspace.dir,
+    );
+    this.checkpoints = new CheckpointStore(this.trace);
+  }
+
+  private setState(next: RunState, detail?: unknown): void {
+    if (next === this.state) return;
+    this.state = next;
+    this.trace.emit("run.state", "orchestrator", { state: next, detail });
+    console.log(`[state] ${next}${detail ? ` ${JSON.stringify(detail)}` : ""}`);
+  }
+
+  async run(): Promise<void> {
+    this.trace.emit("run.start", "orchestrator", {
+      runId: this.runId,
+      config: { ...this.cfg, prompts: undefined },
+      resumed: this.sessionId !== null,
+      endAt: this.endAt,
+    });
+
+    await this.proxy.start();
+    await this.opencode.start();
+    this.opencode.onExit((code) => {
+      if (this.ending) return;
+      this.setState("crashed", { opencodeExit: code });
+      void this.restartHarness("opencode process exited");
+    });
+
+    this.sse.onEvent = (type, props) => this.onBusEvent(type, props);
+    this.sse.start();
+    this.screenshots.start();
+    this.watchdog.start();
+    this.metrics.start();
+
+    // Create or resume the session.
+    if (this.sessionId) {
+      const sessions = await this.opencode.listSessions().catch(() => []);
+      if (!sessions.some((s) => s.id === this.sessionId)) {
+        this.trace.emit("env.error", "orchestrator", {
+          message: `checkpoint session ${this.sessionId} not found; creating new`,
+        });
+        this.sessionId = null;
+      }
+    }
+    if (!this.sessionId) {
+      const session = await this.opencode.createSession(`founderbench ${this.runId}`);
+      this.sessionId = session.id;
+      await this.prompt(this.cfg.prompts.kickoff);
+    } else {
+      await this.prompt(
+        `You were restarted (orchestrator resume). Re-read AGENTS.md and BUSINESS_LOG.md, ` +
+          `check for in-flight work (builds, ads, emails), then continue the operating loop.`,
+      );
+    }
+    this.setState("running");
+
+    // Heartbeat loop.
+    const heartbeatMs = 15_000;
+    while (!this.ending) {
+      await new Promise((r) => setTimeout(r, heartbeatMs));
+      await this.heartbeat();
+    }
+  }
+
+  // ── heartbeat ──────────────────────────────────────────────────────────
+  private async heartbeat(): Promise<void> {
+    this.budget.maybeEmit();
+    this.checkpoint();
+
+    // End-of-run enforcement (wall clock or budget breach).
+    const { status, reasons } = this.budget.status();
+    if (status === "breach") {
+      await this.endRun(reasons.join("; "));
+      return;
+    }
+
+    if (this.watchdog.blocked) {
+      this.setState("blocked-by-dialog");
+      return;
+    }
+
+    const sinceEvent = Date.now() - this.sse.lastEventAt;
+    const stallMs = this.cfg.heartbeat.stall_after_minutes * 60_000;
+
+    if (this.busy) {
+      // Generating — but if the bus has been silent way past the stall window,
+      // the session may be wedged mid-generation.
+      if (sinceEvent > stallMs * 2) {
+        await this.handleStall(`busy but no bus events for ${Math.round(sinceEvent / 60000)}m`);
+      } else {
+        this.setState("running");
+      }
+      return;
+    }
+
+    // Idle: agent finished its turn. Keep it working — inject the continue prompt.
+    if (Date.now() - this.lastPromptAt > 30_000) {
+      this.setState("idle");
+      await this.prompt(this.cfg.prompts.continue);
+      this.nudges = 0;
+      this.setState("running");
+      return;
+    }
+
+    // Prompted recently but nothing is happening → escalate.
+    if (sinceEvent > stallMs) {
+      await this.handleStall(`no bus events for ${Math.round(sinceEvent / 60000)}m after prompt`);
+    }
+  }
+
+  private async handleStall(reason: string): Promise<void> {
+    this.setState("stalled", { reason });
+    this.nudges++;
+    this.trace.emit("run.nudge", "orchestrator", { reason, nudges: this.nudges });
+    if (this.nudges <= this.cfg.heartbeat.max_nudges_before_restart) {
+      await this.prompt(
+        `Heartbeat: you appear stalled (${reason}). Assess where you are, then continue. ` +
+          `If a tool call is hanging, abandon it and take a different approach.`,
+      ).catch(() => void this.restartHarness("prompt failed during stall"));
+    } else {
+      await this.restartHarness(`stalled after ${this.nudges} nudges`);
+    }
+  }
+
+  private async restartHarness(reason: string): Promise<void> {
+    if (this.ending) return;
+    this.setState("restarting", { reason });
+    this.restarts++;
+    this.trace.emit("run.restart", "orchestrator", { reason, restarts: this.restarts });
+    await this.screenshots.capture("pre-restart");
+
+    try {
+      if (this.sessionId) await this.opencode.abortSession(this.sessionId).catch(() => {});
+      this.sse.stop();
+      await this.opencode.stop();
+      await this.opencode.start();
+      this.opencode.onExit((code) => {
+        if (this.ending) return;
+        this.setState("crashed", { opencodeExit: code });
+        void this.restartHarness("opencode process exited");
+      });
+      this.sse.start();
+      // Resume the same session so message history (context) is preserved.
+      await this.prompt(
+        `You were restarted after a stall (${reason}). Check BUSINESS_LOG.md and any ` +
+          `in-flight work, then continue the operating loop from observation.`,
+      );
+      this.nudges = 0;
+      this.setState("running");
+    } catch (err) {
+      this.trace.emit("env.error", "orchestrator", { message: `restart failed: ${String(err)}` });
+      // launchd KeepAlive will restart the whole daemon; checkpoint has our state.
+      process.exit(1);
+    }
+  }
+
+  private async endRun(reason: string): Promise<void> {
+    if (this.ending) return;
+    this.ending = true;
+    this.setState("wrapping-up", { reason });
+
+    try {
+      if (this.sessionId) {
+        await this.opencode.abortSession(this.sessionId).catch(() => {});
+        await this.prompt(this.cfg.prompts.wrapup);
+        // Give the wrap-up a bounded window.
+        const wrapupMs = (this.cfg.run.wrapup_minutes ?? 10) * 60_000;
+        await new Promise((r) => setTimeout(r, wrapupMs));
+      }
+    } catch {
+      /* best effort */
+    }
+
+    await this.metrics.snapshot().catch(() => {});
+    await this.screenshots.capture("run-end").catch(() => {});
+    this.trace.emit("run.end", "orchestrator", {
+      reason,
+      restarts: this.restarts,
+      usage: { ...this.proxy.usage },
+      tokenSpendUsd: this.budget.tokenSpendUsd(),
+      businessSpendUsd: this.budget.businessSpendUsd,
+      durationMs: Date.now() - this.startedAt,
+    });
+    this.setState("completed");
+
+    this.sse.stop();
+    this.watchdog.stop();
+    this.screenshots.stop();
+    this.metrics.stop();
+    await this.opencode.stop();
+    await this.proxy.stop();
+    // Marker file tells the launchd wrapper not to restart us.
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(join(this.trace.runDir, "COMPLETED"), new Date().toISOString());
+    process.exit(0);
+  }
+
+  // ── helpers ────────────────────────────────────────────────────────────
+  private async prompt(text: string): Promise<void> {
+    if (!this.sessionId) throw new Error("no session");
+    this.lastPromptAt = Date.now();
+    this.busy = true;
+    await this.opencode.promptAsync(this.sessionId, text, {
+      agent: this.cfg.opencode.agent,
+      model: { providerID: this.cfg.model.provider_id, modelID: this.cfg.model.model_id },
+    });
+    this.trace.emit("harness.message", "orchestrator", { direction: "inject", text });
+  }
+
+  private onBusEvent(type: string, properties: unknown): void {
+    // Track busy/idle from session status events.
+    const props = properties as
+      | { sessionID?: string; status?: { type?: string }; info?: { sessionID?: string } }
+      | undefined;
+    const sid = props?.sessionID ?? props?.info?.sessionID;
+    if (sid && this.sessionId && sid !== this.sessionId) return; // subagent/other session
+
+    // Busy/idle is driven only by explicit session status events. Message events
+    // are NOT used: opencode emits message.updated after idle (summary attachment),
+    // which would wedge us in "busy" forever.
+    if (type === "session.idle" || type === "session.error") {
+      this.busy = false;
+    } else if (type === "session.status") {
+      const statusType = props?.status?.type;
+      this.busy = statusType !== undefined && statusType !== "idle";
+    }
+
+    // Safety net: auto-approve any permission request that slips past allow-all config.
+    if (type === "permission.updated" || type === "permission.asked") {
+      const perm = properties as { id?: string; sessionID?: string };
+      if (perm?.id && perm?.sessionID) {
+        void this.opencode
+          .respondPermission(perm.sessionID, perm.id)
+          .then(() =>
+            this.trace.emit("harness.permission", "orchestrator", {
+              permissionId: perm.id,
+              response: "always (auto-approved by orchestrator)",
+            }),
+          )
+          .catch(() => {});
+      }
+    }
+  }
+
+  private checkpoint(): void {
+    this.checkpoints.save(
+      {
+        runId: this.runId,
+        sessionId: this.sessionId,
+        appRepoSha: null, // filled by store
+        startedAt: this.startedAt,
+        endAt: this.endAt,
+        nudges: this.nudges,
+        restarts: this.restarts,
+        updatedAt: Date.now(),
+      },
+      this.cfg.workspace.dir,
+    );
+  }
+}
+
+// ── entrypoint ─────────────────────────────────────────────────────────────
+const args = process.argv.slice(2);
+const argOf = (name: string): string | undefined => {
+  const i = args.indexOf(`--${name}`);
+  return i >= 0 ? args[i + 1] : undefined;
+};
+
+const configPath = argOf("config");
+if (!configPath) {
+  console.error("usage: orchestrator --config configs/pilot-24h.toml [--run-id <resume-id>]");
+  process.exit(1);
+}
+
+loadCredentialsEnv();
+const cfg = loadRunConfig(configPath);
+
+// Resume logic: explicit --run-id, or config resume_run_id, else new run.
+const resumeId = argOf("run-id") ?? (cfg.run.resume_run_id || undefined);
+const runId = resumeId ?? `${cfg.run.name}-${new Date().toISOString().slice(0, 10)}-${randomUUID().slice(0, 8)}`;
+
+const bootstrapTrace = new TraceStore(join(FB_ROOT, "runs"), runId);
+const checkpoint = resumeId ? new CheckpointStore(bootstrapTrace).load() : null;
+
+if (checkpoint && Date.now() >= checkpoint.endAt) {
+  console.log(`run ${runId} already past its end time; nothing to do`);
+  process.exit(0);
+}
+
+const orchestrator = new Orchestrator(cfg, runId, checkpoint);
+
+process.on("SIGTERM", () => {
+  bootstrapTrace.emit("run.state", "orchestrator", { state: "sigterm" });
+  process.exit(0);
+});
+
+orchestrator.run().catch((err) => {
+  bootstrapTrace.emit("env.error", "orchestrator", { message: String(err), fatal: true });
+  console.error(err);
+  process.exit(1); // launchd restarts us; checkpoint resumes the run
+});

@@ -1,0 +1,71 @@
+# FounderBench smoke run — 2 hours, tight caps.
+# Goal: prove the agent can stay alive, operate the machine, use the tools, and
+# produce a complete trace. NOT business growth.
+
+[run]
+name = "smoke"
+duration_hours = 2
+
+[model]
+provider_id = "founderbench"
+model_id = "glm-5.2"
+upstream_url = "https://api.z.ai/api/coding/paas/v4"
+proxy_port = 41500
+
+[workspace]
+dir = "/Users/agent/work/app"
+
+[opencode]
+port = 41400
+agent = "build"
+
+[heartbeat]
+stall_after_minutes = 10
+max_nudges_before_restart = 2
+watchdog_interval_seconds = 30
+screenshot_interval_seconds = 300
+checkpoint_interval_seconds = 60
+
+[budget]
+max_token_spend_usd = 10
+input_cost_per_mtok = 0.6
+output_cost_per_mtok = 2.2
+max_business_spend_usd = 0        # smoke run: NO real spending
+
+[metrics]
+interval_minutes = 15
+
+[metrics.commands]
+git_head = "git log -1 --oneline"
+build_health = "xcodebuild -list 2>&1 | head -20"
+unread_support_mail = "tools/fastmail-jmap.sh unread-count"
+
+[prompts]
+kickoff = """
+This is a 2-hour SMOKE RUN of your environment. Your job is to prove every tool works,
+not to grow the business. Do NOT spend any money (no ads, no purchases).
+
+Work through this checklist, verifying each item and recording results in BUSINESS_LOG.md:
+1. Read AGENTS.md. List your available tools and skills.
+2. Build the app and run its tests (load the ship-release skill; stop before archive).
+3. Boot a simulator, launch the app, take a screenshot.
+4. Check App Store Connect: current live version, latest reviews (asc CLI).
+5. Check RevenueCat overview (tools/revenuecat.sh overview).
+6. Check the bank balance (bank MCP) — read only.
+7. Check Meta ad account status (meta_ads MCP) — read only, do not create anything.
+8. Read the support inbox (fastmail MCP) — reply only if something urgent is waiting.
+9. Do one small web research task (exa): list the top 3 competitors.
+10. Commit BUSINESS_LOG.md with a full report: what worked, what failed, exact errors.
+
+If a tool fails, record the exact error and move on. A complete failure report is a
+successful smoke run.
+"""
+continue = """
+Heartbeat: you are idle. Continue the smoke-run checklist from where you left off.
+If the checklist is complete, review BUSINESS_LOG.md for gaps, then do a deeper
+verification pass on anything that failed the first time.
+"""
+wrapup = """
+The smoke run is ending. Finalize BUSINESS_LOG.md now: summarize every tool's status
+(working / broken + error), commit, and stop.
+"""

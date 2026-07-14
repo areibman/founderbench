@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# Stage 60: load credentials.env and verify EVERY credential with a live CLI call.
+# Run as the agent user. Fails loudly per credential; exits non-zero if any required check fails.
+
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+source ./lib.sh
+
+require_macos
+require_not_root
+
+[[ -f "$FB_CREDENTIALS" ]] || die "credentials.env not found. Copy configs/credentials.env.example to $FB_CREDENTIALS and fill it in."
+load_credentials
+
+FAILURES=0
+must() {  # must <label> <command...>
+  if ! check "$1" "${@:2}"; then FAILURES=$((FAILURES+1)); fi
+}
+should() {  # optional check — warns but doesn't fail the stage
+  check "$1" "${@:2}" || warn "  (optional) $1 failed"
+}
+
+log "── Apple / App Store Connect ──"
+asc_env() {
+  export ASC_KEY_ID ASC_ISSUER_ID
+  export ASC_PRIVATE_KEY_PATH
+}
+if [[ -n "${ASC_KEY_ID:-}" && -f "${ASC_PRIVATE_KEY_PATH/#\~/$HOME}" ]]; then
+  asc_env
+  must "asc: App Store Connect API reachable (asc apps list)" \
+    asc apps list --limit 1
+else
+  fail "ASC_KEY_ID/ASC_PRIVATE_KEY_PATH not configured"; FAILURES=$((FAILURES+1))
+fi
+
+log "── Signing ──"
+must "codesigning identity present in build keychain" \
+  bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -q "valid identities found" && ! security find-identity -v -p codesigning founderbench.keychain-db | grep -q "0 valid"'
+
+log "── GitHub ──"
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  must "gh: token valid (gh auth status)" env GH_TOKEN="$GITHUB_TOKEN" gh auth status
+  if [[ -n "${APP_REPO_URL:-}" ]]; then
+    repo_slug="$(sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##' <<<"$APP_REPO_URL")"
+    must "gh: can read app repo ($repo_slug)" env GH_TOKEN="$GITHUB_TOKEN" gh repo view "$repo_slug" --json name
+  fi
+else
+  fail "GITHUB_TOKEN not set"; FAILURES=$((FAILURES+1))
+fi
+
+log "── Model provider ──"
+if [[ -n "${MODEL_API_KEY:-}" && -n "${MODEL_UPSTREAM_URL:-}" ]]; then
+  must "model API: chat completion round-trip" \
+    curl -sf --max-time 30 "$MODEL_UPSTREAM_URL/chat/completions" \
+      -H "Authorization: Bearer $MODEL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{\"model\":\"${MODEL_ID:-glm-5.2}\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}"
+else
+  fail "MODEL_API_KEY/MODEL_UPSTREAM_URL not set"; FAILURES=$((FAILURES+1))
+fi
+
+log "── RevenueCat ──"
+if [[ -n "${REVENUECAT_API_KEY:-}" && -n "${REVENUECAT_PROJECT_ID:-}" ]]; then
+  must "RevenueCat: project readable" \
+    curl -sf --max-time 15 "https://api.revenuecat.com/v2/projects/$REVENUECAT_PROJECT_ID" \
+      -H "Authorization: Bearer $REVENUECAT_API_KEY"
+else
+  warn "REVENUECAT_API_KEY/PROJECT_ID not set (required before pilot, optional for machine setup)"
+fi
+
+log "── Fastmail (JMAP) ──"
+if [[ -n "${FASTMAIL_JMAP_TOKEN:-}" ]]; then
+  must "Fastmail: JMAP session fetch" \
+    curl -sf --max-time 15 "https://api.fastmail.com/jmap/session" \
+      -H "Authorization: Bearer $FASTMAIL_JMAP_TOKEN"
+else
+  fail "FASTMAIL_JMAP_TOKEN not set"; FAILURES=$((FAILURES+1))
+fi
+
+log "── Exa ──"
+if [[ -n "${EXA_API_KEY:-}" ]]; then
+  should "Exa: search API reachable" \
+    curl -sf --max-time 20 "https://api.exa.ai/search" \
+      -H "x-api-key: $EXA_API_KEY" -H "Content-Type: application/json" \
+      -d '{"query":"ping","numResults":1}'
+else
+  warn "EXA_API_KEY not set (exa MCP can also use OAuth; token recommended)"
+fi
+
+log "── meow.com banking ──"
+if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
+  should "meow: API token present (verify balance read via agent MCP after stage 65)" true
+else
+  warn "MEOW_API_TOKEN not set — banking auth is via MCP OAuth (stage 65); orchestrator-side balance polling disabled"
+fi
+
+log "── OAuth-based MCPs (verified in stage 65) ──"
+MCP_AUTH_FILE="$HOME/.local/share/opencode/mcp-auth.json"
+if [[ -f "$MCP_AUTH_FILE" ]]; then
+  for server in meta_ads fastmail bank; do
+    if jq -e --arg s "$server" 'has($s)' "$MCP_AUTH_FILE" >/dev/null 2>&1; then
+      ok "opencode mcp auth: $server credentials stored"
+    else
+      warn "opencode mcp auth: $server not yet authorized (run stage 65)"
+    fi
+  done
+else
+  warn "no OpenCode MCP auth store yet (run stage 65)"
+fi
+
+echo
+if [[ $FAILURES -gt 0 ]]; then
+  die "$FAILURES required credential check(s) FAILED — fix before running"
+fi
+log "Stage 60 complete — all required credentials verified"

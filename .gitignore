@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- FounderBench ---
+# Run artifacts (traces, screenshots, logs)
+runs/
+# Secrets
+credentials.env
+*.p8
+*.p12
+*.mobileprovision
+# Node
+node_modules/

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "model": "founderbench/glm-5.2",
+
+  "provider": {
+    "founderbench": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "FounderBench traced provider",
+      "options": {
+        "baseURL": "http://127.0.0.1:41500/v1",
+        "apiKey": "{env:MODEL_API_KEY}"
+      },
+      "models": {
+        "glm-5.2": { "name": "GLM 5.2 (via interception proxy)" },
+        "minimax-m2": { "name": "MiniMax M2 (via interception proxy)" }
+      }
+    }
+  },
+
+  "permission": {
+    "edit": "allow",
+    "bash": "allow",
+    "webfetch": "allow",
+    "skill": { "*": "allow" }
+  },
+
+  "mcp": {
+    "bank": {
+      "type": "remote",
+      "url": "https://mcp.meow.com/mcp",
+      "enabled": true
+    },
+    "meta_ads": {
+      "type": "remote",
+      "url": "https://meta-ads.mcp.pipeboard.co/",
+      "enabled": true
+    },
+    "exa": {
+      "type": "remote",
+      "url": "https://mcp.exa.ai/mcp",
+      "headers": { "x-api-key": "{env:EXA_API_KEY}" },
+      "oauth": false,
+      "enabled": true
+    },
+    "fastmail": {
+      "type": "remote",
+      "url": "https://api.fastmail.com/mcp",
+      "enabled": true
+    },
+    "xcmcp": {
+      "type": "local",
+      "command": ["xcmcp", "--wait-for-xcode=0s"],
+      "enabled": true,
+      "timeout": 20000
+    },
+    "axmcp": {
+      "type": "local",
+      "command": ["axmcp"],
+      "enabled": true
+    }
+  },
+
+  "tools": {
+    "axmcp_*": false
+  },
+
+  "agent": {
+    "build": {
+      "tools": {
+        "bank_*": true,
+        "meta_ads_*": true,
+        "fastmail_*": true
+      }
+    },
+    "task": {
+      "tools": {
+        "bank_*": false,
+        "meta_ads_*": false,
+        "fastmail_*": false
+      }
+    }
+  }
+}

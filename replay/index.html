@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>FounderBench Replay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+    --dim: #8b949e; --accent: #58a6ff; --green: #3fb950; --red: #f85149;
+    --yellow: #d29922; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  header { display: flex; gap: 16px; align-items: center; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); background: var(--panel);
+    position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+  h1 { font-size: 14px; margin: 0; color: var(--accent); }
+  select, input[type=text] { background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px;
+    cursor: pointer; user-select: none; color: var(--dim); }
+  .chip.on { color: var(--text); border-color: var(--accent); background: #1c2a3a; }
+  #stats { color: var(--dim); margin-left: auto; }
+  main { display: grid; grid-template-columns: 1fr 480px; height: calc(100vh - 53px); }
+  #timeline { overflow-y: auto; padding: 8px 0; }
+  .ev { display: flex; gap: 10px; padding: 3px 16px; cursor: pointer; align-items: baseline; }
+  .ev:hover { background: var(--panel); }
+  .ev.sel { background: #1c2a3a; }
+  .ts { color: var(--dim); white-space: nowrap; }
+  .type { white-space: nowrap; min-width: 150px; }
+  .summary { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .t-model { color: var(--purple); } .t-harness { color: var(--accent); }
+  .t-run { color: var(--green); } .t-env { color: var(--red); }
+  .t-budget { color: var(--yellow); } .t-metrics { color: var(--yellow); }
+  .t-git { color: var(--green); }
+  #detail { border-left: 1px solid var(--border); overflow-y: auto; padding: 16px;
+    background: var(--panel); }
+  #detail pre { white-space: pre-wrap; word-break: break-word; background: var(--bg);
+    padding: 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 12px; }
+  #detail img { max-width: 100%; border: 1px solid var(--border); border-radius: 6px; }
+  #detail h3 { margin: 0 0 8px; font-size: 13px; }
+  .kv { color: var(--dim); margin-bottom: 12px; }
+  .kv b { color: var(--text); }
+  .empty { color: var(--dim); padding: 40px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FounderBench Replay</h1>
+  <select id="runSel"></select>
+  <input id="search" type="text" placeholder="filter text…" size="24" />
+  <div class="filters" id="chips"></div>
+  <span id="stats"></span>
+</header>
+<main>
+  <div id="timeline"><div class="empty">select a run</div></div>
+  <div id="detail"><div class="empty">select an event to inspect<br><br>
+    <em>what did the agent know, what did it decide,<br>what action did it take, what happened next?</em></div></div>
+</main>
+<script>
+const CATS = ["model","harness","run","env","git","metrics","budget"];
+let events = [], filtered = [], selected = null, runId = null;
+const on = new Set(CATS);
+
+const $ = (s) => document.querySelector(s);
+const cat = (t) => (t || "").split(".")[0];
+const fmtTs = (ts) => new Date(ts).toLocaleTimeString("en-US", {hour12:false}) +
+  "." + String(ts % 1000).padStart(3,"0");
+
+function summarize(e) {
+  const d = e.data || {};
+  switch (cat(e.type)) {
+    case "model":
+      if (e.type === "model.request") {
+        const msgs = d.body?.messages;
+        const last = Array.isArray(msgs) ? msgs[msgs.length-1] : null;
+        return `→ ${d.path || ""} ${typeof last?.content === "string" ? last.content.slice(0,180) : ""}`;
+      }
+      if (e.type === "model.response")
+        return `← ${d.status} ${d.durationMs}ms ${d.usage ? `(${d.usage.inputTokens}→${d.usage.outputTokens} tok)` : ""} ${d.body?.text ? d.body.text.slice(0,140) : ""}`;
+      if (e.type === "model.usage") return `tokens in=${d.inputTokens} out=${d.outputTokens}`;
+      break;
+    case "harness": {
+      const p = d.properties || {};
+      const txt = p.part?.text || p.info?.title || p.status?.type || "";
+      return `${d.type || e.type} ${typeof txt === "string" ? txt.slice(0,160) : ""}`;
+    }
+    case "run": return d.state || d.reason || JSON.stringify(d).slice(0,160);
+    case "env":
+      if (e.type === "env.dialog") return `DIALOG ${d.process}: "${d.window}" → ${d.dismissedVia || "not dismissed"}`;
+      if (e.type === "env.screenshot") return d.reason;
+      return (d.message || "").slice(0,180);
+    case "git": return `${(d.sha||"").slice(0,8)} ${d.message || ""}`;
+    case "metrics": return `snapshot: ${Object.keys(d.results||{}).join(", ")} | $tok=${(d.tokenSpendUsd??0).toFixed(2)}`;
+    case "budget": return (d.reasons||[]).join("; ") || `$tok=${(d.tokenSpendUsd??0).toFixed(2)} remaining=${Math.round((d.timeRemainingMs??0)/60000)}m`;
+  }
+  return JSON.stringify(d).slice(0,160);
+}
+
+function render() {
+  const q = $("#search").value.toLowerCase();
+  filtered = events.filter(e => on.has(cat(e.type)) &&
+    (!q || JSON.stringify(e).toLowerCase().includes(q)));
+  const tl = $("#timeline");
+  tl.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  for (const e of filtered) {
+    const row = document.createElement("div");
+    row.className = "ev" + (selected === e ? " sel" : "");
+    row.innerHTML = `<span class="ts">${fmtTs(e.ts)}</span>` +
+      `<span class="type t-${cat(e.type)}">${e.type}</span>` +
+      `<span class="summary"></span>`;
+    row.querySelector(".summary").textContent = summarize(e);
+    row.onclick = () => { selected = e; render(); detail(e); };
+    frag.appendChild(row);
+  }
+  tl.appendChild(frag);
+  $("#stats").textContent = `${filtered.length}/${events.length} events`;
+}
+
+function detail(e) {
+  const d = $("#detail");
+  let html = `<h3 class="t-${cat(e.type)}">${e.type}</h3>
+    <div class="kv"><b>${fmtTs(e.ts)}</b> · source=${e.source}` +
+    (e.sessionId ? ` · session=${e.sessionId}` : "") +
+    (e.parentId ? ` · parent=${e.parentId.slice(0,8)}` : "") + `</div>`;
+  const file = e.data?.file || e.data?.evidence;
+  if (typeof file === "string" && file.includes("/runs/")) {
+    const rel = file.slice(file.indexOf("/runs/") + 6);
+    html += `<img src="/runs/${rel}" alt="screenshot" /><br><br>`;
+  }
+  html += `<pre>${escapeHtml(JSON.stringify(e.data, null, 2))}</pre>`;
+  if (e.parentId) {
+    const related = events.filter(x => x.parentId === e.parentId && x !== e);
+    if (related.length) {
+      html += `<div class="kv"><b>related (same parent):</b></div>`;
+      for (const r of related.slice(0, 5))
+        html += `<pre>${r.type}\n${escapeHtml(JSON.stringify(r.data, null, 2).slice(0, 3000))}</pre>`;
+    }
+  }
+  d.innerHTML = html;
+}
+
+const escapeHtml = (s) => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+async function loadRun(id) {
+  runId = id;
+  const text = await (await fetch(`/api/runs/${id}/trace`)).text();
+  events = text.split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  selected = null;
+  render();
+}
+
+async function init() {
+  const chips = $("#chips");
+  for (const c of CATS) {
+    const el = document.createElement("span");
+    el.className = "chip on"; el.textContent = c;
+    el.onclick = () => { on.has(c) ? on.delete(c) : on.add(c); el.classList.toggle("on"); render(); };
+    chips.appendChild(el);
+  }
+  $("#search").oninput = render;
+  const runs = await (await fetch("/api/runs")).json();
+  const sel = $("#runSel");
+  sel.innerHTML = runs.map(r =>
+    `<option value="${r.id}">${r.id} (${r.events} ev${r.completed ? ", done" : ", live"})</option>`).join("") ||
+    "<option>no runs yet</option>";
+  sel.onchange = () => loadRun(sel.value);
+  if (runs.length) loadRun(runs[0].id);
+}
+init();
+</script>
+</body>
+</html>
