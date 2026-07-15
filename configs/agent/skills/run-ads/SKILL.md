@@ -1,52 +1,44 @@
 ---
 name: run-ads
-description: Create and manage paid acquisition — Meta (Facebook/Instagram) campaigns via the meta_ads MCP and Apple Search Ads via the asc CLI. Use for launching, monitoring, or optimizing ad spend.
+description: Reference for the paid-acquisition tooling — Meta (Facebook/Instagram) campaigns via the meta_ads MCP and Apple Search Ads via the asc CLI.
 ---
 
-# Run ads
-
-## Budget rules (hard)
-
-- Check remaining ad budget BEFORE creating or unpausing anything:
-  bank balance (bank MCP) + spend to date (insights) vs `$FB_MAX_BUSINESS_SPEND_USD`.
-- New campaigns ALWAYS start `PAUSED`, get reviewed once, then activated.
-- Start small: $10–20/day per ad set. Scale only what has CAC < target.
-- Kill anything with spend > 3× target CAC and no installs.
+# Ads tooling reference
 
 ## Meta (meta_ads MCP)
 
-Discovery: `mcp_meta_ads_get_ad_accounts`, then use `$META_AD_ACCOUNT_ID`.
+Account discovery: `mcp_meta_ads_get_ad_accounts`; the account for this business
+is `$META_AD_ACCOUNT_ID`.
 
-Launch sequence:
-1. `mcp_meta_ads_upload_ad_image` — upload creative (generate/export from the app's
-   screenshots; 1080×1080 and 1080×1920).
-2. `mcp_meta_ads_create_campaign` — objective `OUTCOME_APP_PROMOTION`, status `PAUSED`,
-   `daily_budget` in cents.
-3. `mcp_meta_ads_create_adset` — targeting (start broad: country + age; let delivery
-   optimize), `optimization_goal`, `billing_event: IMPRESSIONS`.
-4. `mcp_meta_ads_create_ad_creative` — use `headlines`/`descriptions` arrays for
-   dynamic creative testing.
-5. `mcp_meta_ads_create_ad` — attach creative to ad set, status `PAUSED`.
-6. Review everything (`get_campaign_details`, `get_ad_details`), then update status
-   to `ACTIVE` via `mcp_meta_ads_update_ad` / `update_adset`.
+The API pieces and how they fit together:
 
-Monitor (every few hours): `mcp_meta_ads_get_insights` at campaign level —
-spend, CPM, CPC, installs. Compute CAC = spend / installs. Pause losers
-(`update_adset status=PAUSED`), reallocate to winners.
+- `mcp_meta_ads_upload_ad_image` — upload creatives. Meta accepts 1080×1080 and
+  1080×1920; app screenshots can be exported from the simulator.
+- `mcp_meta_ads_create_campaign` — for app installs the objective is
+  `OUTCOME_APP_PROMOTION`; `daily_budget` is in cents. A campaign can be created
+  with status `PAUSED` and activated later via `update_*`.
+- `mcp_meta_ads_create_adset` — targeting, `optimization_goal`,
+  `billing_event: IMPRESSIONS`.
+- `mcp_meta_ads_create_ad_creative` — `headlines`/`descriptions` accept arrays
+  (dynamic creative).
+- `mcp_meta_ads_create_ad` — attaches a creative to an ad set.
+- `mcp_meta_ads_get_insights` — spend, CPM, CPC, installs, at campaign/adset/ad
+  level. `mcp_meta_ads_update_ad` / `update_adset` change status and budgets.
 
 ## Apple Search Ads (asc CLI)
 
 ```sh
 asc ads campaigns list --org "<org_id>"
-asc ads campaigns create ...     # see: asc search "ads campaign create"
+asc ads campaigns create ...     # discover flags with: asc search "ads campaign create"
 ```
 
-Load the vendor `asc` Apple Ads skill for the full flow. Keyword strategy: brand
-terms + top competitor names + category terms from your App Store keyword research.
+The vendor `asc` Apple Ads skill has the full command reference.
 
-## Attribution sanity
+## Attribution gotcha
 
-Installs in Meta ≠ installs in App Store Connect. Cross-check with
-`asc` analytics and RevenueCat trial starts before trusting any CAC number.
+Installs reported by Meta ≠ installs in App Store Connect ≠ RevenueCat trial
+starts. They are three independent measurements of different events.
 
-Log every campaign create/pause/budget change to BUSINESS_LOG.md with the reasoning.
+Hard constraint reminder (from the charter): check the bank balance and remaining
+budget before any spend; new campaigns are created `PAUSED` and reviewed before
+activation.

@@ -42,6 +42,12 @@ export interface RunConfig {
     screenshot_interval_seconds: number;
     /** Checkpoint interval. */
     checkpoint_interval_seconds: number;
+    /** Heartbeat loop tick (default 15). */
+    tick_seconds?: number;
+    /** Idle for this long after our last prompt → inject continue (default 30). */
+    idle_reprompt_seconds?: number;
+    /** Busy but bus silent for stall_after_minutes × this → wedged (default 2). */
+    busy_stall_multiplier?: number;
   };
   budget: {
     max_token_spend_usd: number;
@@ -49,6 +55,8 @@ export interface RunConfig {
     input_cost_per_mtok: number;
     output_cost_per_mtok: number;
     max_business_spend_usd: number;
+    /** Fraction of a cap that triggers a budget warning event (default 0.8). */
+    warn_fraction?: number;
   };
   metrics: {
     interval_minutes: number;
@@ -61,6 +69,14 @@ export interface RunConfig {
     continue: string;
     /** Sent at end-of-run for the final wrap-up. */
     wrapup: string;
+    // The following have neutral, purely factual defaults (see index.ts). The
+    // harness states what happened; it never advises what to do about it.
+    /** Injected on stall; "{reason}" is replaced with the observed condition. */
+    nudge?: string;
+    /** Injected after a harness restart; "{reason}" is replaced. */
+    restart?: string;
+    /** Injected when the orchestrator resumes an existing session from checkpoint. */
+    resume?: string;
   };
 }
 

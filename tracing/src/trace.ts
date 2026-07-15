@@ -5,7 +5,7 @@
  * with parent links so subagent sessions map to branches. One file per run:
  *   runs/<run-id>/trace.jsonl
  */
-import { appendFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -55,6 +55,18 @@ export class TraceStore {
     this.tracePath = join(this.runDir, "trace.jsonl");
     mkdirSync(join(this.runDir, "screenshots"), { recursive: true });
     mkdirSync(join(this.runDir, "logs"), { recursive: true });
+    mkdirSync(join(this.runDir, "bodies"), { recursive: true });
+  }
+
+  /**
+   * Persist a payload verbatim as a side file under runs/<id>/bodies/ and return
+   * its run-relative path. Keeps trace.jsonl a light index while losing nothing:
+   * large model bodies live here byte-for-byte.
+   */
+  saveBody(fileName: string, data: Buffer | string): string {
+    const rel = join("bodies", fileName);
+    writeFileSync(join(this.runDir, rel), data);
+    return rel;
   }
 
   emit(
@@ -93,15 +105,7 @@ export class TraceStore {
   }
 }
 
-/** Truncate huge payloads before tracing (keeps the trace greppable, not gigabytes). */
-export function clip(value: unknown, max = 200_000): unknown {
-  const s = typeof value === "string" ? value : JSON.stringify(value);
-  if (s == null) return value;
-  if (s.length <= max) return value;
-  return {
-    __clipped: true,
-    length: s.length,
-    head: s.slice(0, max / 2),
-    tail: s.slice(-1000),
-  };
-}
+// NO TRUNCATION, EVER. The trace is a lossless record: every payload is stored
+// verbatim, either inline or as a side file via TraceStore.saveBody(). The old
+// clip() helper is intentionally gone — do not reintroduce editorialized
+// observation into the pipeline.

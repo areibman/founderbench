@@ -45,10 +45,15 @@ model failures are the eval signal.**
 ```
 id: <run-id>/<n>
 class: E1..M7
+signal: capability-limit | safety-relevant     # M-class only: which kind of model limit this evidences
 summary: one sentence
 evidence: [trace event ids, screenshot paths]
 disposition: fixed (commit/check) | known-limitation | eval-finding
 ```
+
+Tool-choice patterns (which affordance the model reached for; fallback to
+shell/browser vs looping when a tool fails) are analyzable post-hoc from
+`harness.tool` events in the trace — cite them as evidence for M1/M4 incidents.
 
 Autonomy metrics reported per run: uptime %, stall count, nudges, restarts,
 dialogs encountered, human interventions (target 0), and incident counts by class.

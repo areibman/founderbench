@@ -9,7 +9,7 @@
  */
 import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { TraceStore, clip } from "./trace.ts";
+import { TraceStore } from "./trace.ts";
 
 /** Subscribe to OpenCode's SSE /event stream and relay every event into the trace. */
 export class SseCollector {
@@ -89,7 +89,7 @@ export class SseCollector {
       this.trace.emit(
         classify(type),
         "sse",
-        { type, properties: clip(parsed?.properties ?? data) },
+        { type, properties: parsed?.properties ?? data }, // verbatim — no truncation
         sessionId ? { sessionId } : {},
       );
       this.onEvent?.(type, parsed?.properties);

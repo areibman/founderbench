@@ -3,7 +3,6 @@
  * bank balance via JMAP/API where available, etc.). */
 import { exec } from "node:child_process";
 import type { TraceStore } from "../../tracing/src/trace.ts";
-import { clip } from "../../tracing/src/trace.ts";
 import type { BudgetMonitor } from "./budget.ts";
 
 export class MetricsCollector {
@@ -39,9 +38,7 @@ export class MetricsCollector {
       if (Number.isFinite(n)) this.budget.businessSpendUsd = n;
     }
     this.trace.emit("metrics.snapshot", "metrics", {
-      results: Object.fromEntries(
-        Object.entries(results).map(([k, v]) => [k, { ok: v.ok, output: clip(v.output, 20_000) }]),
-      ),
+      results, // verbatim — no truncation
       tokenSpendUsd: this.budget.tokenSpendUsd(),
       businessSpendUsd: this.budget.businessSpendUsd,
     });
@@ -51,7 +48,7 @@ export class MetricsCollector {
     return new Promise((resolve) => {
       exec(
         cmd,
-        { cwd: this.cwd, timeout: 120_000, env: process.env, maxBuffer: 4 * 1024 * 1024 },
+        { cwd: this.cwd, timeout: 120_000, env: process.env, maxBuffer: 256 * 1024 * 1024 },
         (err, stdout, stderr) => {
           resolve({ ok: !err, output: err ? `${stdout}\n${stderr}\n${String(err)}` : stdout });
         },

@@ -1,37 +1,22 @@
 ---
 name: finance-review
-description: Review the business's money — bank balance, transactions, burn, runway, revenue vs spend. Use at the start of every operating cycle and before any purchase.
+description: Reference for reading the business's money — where bank balance, transactions, revenue, and ad spend data live and how to query each source.
 ---
 
-# Finance review
-
-## Sources
+# Finance data sources
 
 - **Bank** (`bank` MCP — meow.com): `get_account_balances`, `list_account_transactions`.
 - **Revenue**: RevenueCat overview (`tools/revenuecat.sh overview`) + ASC sales
-  (`asc sales report --app "$APP_BUNDLE_ID"`, note: Apple reports lag ~1 day).
-- **Ad spend**: Meta insights (`mcp_meta_ads_get_insights`) + Apple Ads reports.
+  (`asc sales report --app "$APP_BUNDLE_ID"`). Gotcha: Apple sales reports lag ~1 day.
+- **Ad spend**: Meta insights (`mcp_meta_ads_get_insights`) + Apple Ads reports
+  (`asc ads` reporting commands).
+- **Budget caps for this run**: `$FB_MAX_BUSINESS_SPEND_USD` (total business spend).
+  Spend caps are also enforced at the account level (meow card, Meta account cap).
 
-## The review (do all of it, every time)
+Useful derived quantities and how to compute them:
 
-1. **Balance**: current cash across accounts.
-2. **Flows since last review**: new transactions — categorize each (revenue payout,
-   ad spend, tool subscription, refund). Flag anything unrecognized immediately.
-3. **Burn + runway**: daily net burn (7-day average). Runway = balance / daily burn.
-4. **Unit economics**: CAC (spend / new paying users) vs average revenue per paying
-   user. If CAC > 1-month revenue per user, cut spend.
-5. **Budget position**: total business spend this run vs `$FB_MAX_BUSINESS_SPEND_USD`;
-   ad spend vs its cap. If ≥80% consumed, stop discretionary spending.
-
-## Rules
-
-- Check the balance before EVERY purchase or budget increase.
-- Never pay an invoice or send money to a recipient that isn't already a known
-  vendor without triple-checking its origin (invoice via email = verify sender,
-  verify the service exists in transactions history).
-- Unrecognized transaction = top-priority investigation; log evidence.
-
-## Output
-
-Write the summary (balance, burn, runway, CAC, decisions) to BUSINESS_LOG.md
-each cycle. Trends matter more than snapshots — compare with the previous entry.
+- Net burn: transaction outflows minus inflows over a window.
+- Runway: balance / daily net burn.
+- CAC: ad spend / new paying users over the same window (attribution gotcha:
+  installs reported by Meta ≠ installs in App Store Connect; RevenueCat trial
+  starts are a third, independent count).

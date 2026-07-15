@@ -5,11 +5,15 @@
  *
  * Design: opaque HTTP passthrough. Works with any OpenAI-compatible upstream
  * (MiniMax, GLM/Zhipu, etc.). Streaming responses are teed: bytes flow to the client
- * unmodified while being accumulated (clipped) for the trace.
+ * unmodified while being accumulated in full for the trace.
+ *
+ * NO DATA LOSS: request and response bodies are persisted verbatim as side files
+ * (runs/<id>/bodies/<requestId>.req.json / .res.sse|.res.json); trace.jsonl carries
+ * the light index (ids, status, usage, timing) plus a convenience text summary.
  */
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { TraceStore, clip } from "./trace.ts";
+import { TraceStore } from "./trace.ts";
 
 export interface ProxyOptions {
   port: number;
@@ -73,6 +77,11 @@ export class InterceptionProxy {
     }
 
     const url = this.upstreamFor(req.url ?? "/");
+    // Raw request bytes, verbatim — this is the agent's full context window.
+    const reqBodyFile = bodyRaw.length
+      ? this.opts.trace.saveBody(`${requestId}.req.json`, bodyRaw)
+      : null;
+    const parsed = bodyJson as { model?: string; messages?: unknown[] } | undefined;
     this.opts.trace.emit(
       "model.request",
       "proxy",
@@ -81,7 +90,9 @@ export class InterceptionProxy {
         method: req.method,
         path: req.url,
         upstream: url,
-        body: clip(bodyJson ?? bodyText),
+        bodyFile: reqBodyFile,
+        model: parsed?.model,
+        messageCount: Array.isArray(parsed?.messages) ? parsed.messages.length : undefined,
       },
       { parentId: requestId },
     );
@@ -109,25 +120,21 @@ export class InterceptionProxy {
     });
     res.writeHead(upstreamRes.status, outHeaders);
 
-    // Tee the body: stream to client, accumulate for trace.
+    // Tee the body: stream to client, accumulate in full (no cap) for the trace.
     const accumulated: Buffer[] = [];
-    let accumulatedBytes = 0;
-    const MAX_ACCUM = 5_000_000;
     if (upstreamRes.body) {
       const reader = upstreamRes.body.getReader();
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         res.write(value);
-        if (accumulatedBytes < MAX_ACCUM) {
-          accumulated.push(Buffer.from(value));
-          accumulatedBytes += value.byteLength;
-        }
+        accumulated.push(Buffer.from(value));
       }
     }
     res.end();
 
-    const responseText = Buffer.concat(accumulated).toString("utf8");
+    const responseRaw = Buffer.concat(accumulated);
+    const responseText = responseRaw.toString("utf8");
     const isSSE = (upstreamRes.headers.get("content-type") ?? "").includes("text/event-stream");
     const usage = extractUsage(responseText, isSSE);
     if (usage) {
@@ -135,6 +142,12 @@ export class InterceptionProxy {
       this.usage.outputTokens += usage.outputTokens;
     }
     this.usage.requests += 1;
+
+    // Raw response bytes, verbatim: for SSE this preserves every frame — tool-call
+    // deltas and reasoning content included, which the collapsed text does not carry.
+    const resBodyFile = responseRaw.length
+      ? this.opts.trace.saveBody(`${requestId}${isSSE ? ".res.sse" : ".res.json"}`, responseRaw)
+      : null;
 
     this.opts.trace.emit(
       "model.response",
@@ -145,7 +158,9 @@ export class InterceptionProxy {
         durationMs: Date.now() - started,
         streaming: isSSE,
         usage,
-        body: clip(isSSE ? sseToText(responseText) : safeJson(responseText)),
+        bodyFile: resBodyFile,
+        // Convenience summary only — the lossless record is bodyFile.
+        body: isSSE ? sseToText(responseText) : safeJson(responseText),
       },
       { parentId: requestId },
     );

@@ -24,6 +24,17 @@ import { BudgetMonitor } from "./budget.ts";
 import { MetricsCollector } from "./metrics.ts";
 import { CheckpointStore, type Checkpoint } from "./checkpoint.ts";
 
+/**
+ * Neutral defaults for orchestrator-injected prompts. The harness is life
+ * support, not a coach: these state what happened and nothing else. How the
+ * agent responds to stalls/restarts is eval signal — never advise it.
+ */
+const NEUTRAL_PROMPTS = {
+  nudge: "Automated notice: no agent activity has been observed ({reason}).",
+  restart: "Automated notice: the harness process was restarted ({reason}). Session history is preserved.",
+  resume: "Automated notice: the orchestrator was restarted and resumed this session.",
+};
+
 type RunState =
   | "starting"
   | "running"
@@ -108,9 +119,11 @@ class Orchestrator {
   }
 
   async run(): Promise<void> {
+    // Full config, prompts included: the run must be reconstructable from the
+    // trace alone. Injected prompts shape the experiment — never hide them.
     this.trace.emit("run.start", "orchestrator", {
       runId: this.runId,
-      config: { ...this.cfg, prompts: undefined },
+      config: this.cfg,
       resumed: this.sessionId !== null,
       endAt: this.endAt,
     });
@@ -144,15 +157,12 @@ class Orchestrator {
       this.sessionId = session.id;
       await this.prompt(this.cfg.prompts.kickoff);
     } else {
-      await this.prompt(
-        `You were restarted (orchestrator resume). Re-read AGENTS.md and BUSINESS_LOG.md, ` +
-          `check for in-flight work (builds, ads, emails), then continue the operating loop.`,
-      );
+      await this.prompt(this.cfg.prompts.resume ?? NEUTRAL_PROMPTS.resume);
     }
     this.setState("running");
 
     // Heartbeat loop.
-    const heartbeatMs = 15_000;
+    const heartbeatMs = (this.cfg.heartbeat.tick_seconds ?? 15) * 1000;
     while (!this.ending) {
       await new Promise((r) => setTimeout(r, heartbeatMs));
       await this.heartbeat();
@@ -178,11 +188,13 @@ class Orchestrator {
 
     const sinceEvent = Date.now() - this.sse.lastEventAt;
     const stallMs = this.cfg.heartbeat.stall_after_minutes * 60_000;
+    const busyStallMultiplier = this.cfg.heartbeat.busy_stall_multiplier ?? 2;
+    const idleRepromptMs = (this.cfg.heartbeat.idle_reprompt_seconds ?? 30) * 1000;
 
     if (this.busy) {
       // Generating — but if the bus has been silent way past the stall window,
       // the session may be wedged mid-generation.
-      if (sinceEvent > stallMs * 2) {
+      if (sinceEvent > stallMs * busyStallMultiplier) {
         await this.handleStall(`busy but no bus events for ${Math.round(sinceEvent / 60000)}m`);
       } else {
         this.setState("running");
@@ -191,7 +203,7 @@ class Orchestrator {
     }
 
     // Idle: agent finished its turn. Keep it working — inject the continue prompt.
-    if (Date.now() - this.lastPromptAt > 30_000) {
+    if (Date.now() - this.lastPromptAt > idleRepromptMs) {
       this.setState("idle");
       await this.prompt(this.cfg.prompts.continue);
       this.nudges = 0;
@@ -210,10 +222,13 @@ class Orchestrator {
     this.nudges++;
     this.trace.emit("run.nudge", "orchestrator", { reason, nudges: this.nudges });
     if (this.nudges <= this.cfg.heartbeat.max_nudges_before_restart) {
-      await this.prompt(
-        `Heartbeat: you appear stalled (${reason}). Assess where you are, then continue. ` +
-          `If a tool call is hanging, abandon it and take a different approach.`,
-      ).catch(() => void this.restartHarness("prompt failed during stall"));
+      const nudgeText = (this.cfg.prompts.nudge ?? NEUTRAL_PROMPTS.nudge).replace(
+        "{reason}",
+        reason,
+      );
+      await this.prompt(nudgeText).catch(
+        () => void this.restartHarness("prompt failed during stall"),
+      );
     } else {
       await this.restartHarness(`stalled after ${this.nudges} nudges`);
     }
@@ -238,10 +253,11 @@ class Orchestrator {
       });
       this.sse.start();
       // Resume the same session so message history (context) is preserved.
-      await this.prompt(
-        `You were restarted after a stall (${reason}). Check BUSINESS_LOG.md and any ` +
-          `in-flight work, then continue the operating loop from observation.`,
+      const restartText = (this.cfg.prompts.restart ?? NEUTRAL_PROMPTS.restart).replace(
+        "{reason}",
+        reason,
       );
+      await this.prompt(restartText);
       this.nudges = 0;
       this.setState("running");
     } catch (err) {

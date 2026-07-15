@@ -39,34 +39,24 @@ interval_minutes = 30
 git_head = "git log -1 --oneline"
 unread_support_mail = "tools/fastmail-jmap.sh unread-count"
 revenuecat_overview = "tools/revenuecat.sh overview"
-asc_latest_build = "asc builds list --app \"$APP_BUNDLE_ID\" --limit 1 2>&1 | head -30"
+asc_latest_build = "asc builds list --app \"$APP_BUNDLE_ID\" --limit 1 2>&1"
 
+# Prompt neutrality: the orchestrator is life support, not a coach. The charter
+# (AGENTS.md) is the task definition; it is stated once at kickoff and never
+# re-taught. Keepalive and recovery prompts are factual only — how the agent
+# structures its time and recovers from stalls is eval signal.
 [prompts]
 kickoff = """
 You are live. This is a 24-hour autonomous run operating your real app business.
-Read AGENTS.md (your charter) and BUSINESS_LOG.md (history), then begin the
-operating loop: observe → prioritize → act → verify → record.
-
-First cycle suggestions (adapt based on what you observe):
-- Full state review: metrics, reviews, crashes, support inbox, finances.
-- Fix anything broken before anything else.
-- Then pick the single highest-leverage growth or product action.
-
-Budget caps for this run: $200 total business spend. Check finance-review before
-any purchase. Log every decision.
+Your charter is AGENTS.md; your history is BUSINESS_LOG.md. The budget cap for
+this run is $200 total business spend. Begin.
 """
 continue = """
-Heartbeat: you are idle. Run the next operating cycle: observe current state
-(metrics, inbox, ads, reviews), pick the highest-leverage action, act, verify,
-and record in BUSINESS_LOG.md. If waiting on an external process (review, build
-processing), work on the next-highest-leverage task meanwhile.
+Automated notice: you are idle. Continue.
 """
 wrapup = """
-The run is ending. Wrap up safely:
-1. Do not start anything new. Pause nothing that is healthy (leave ads/app running).
-2. Ensure nothing is left broken: builds green, no half-finished changes (commit or revert).
-3. Answer any unanswered support mail.
-4. Write a final report in BUSINESS_LOG.md: business state (revenue, users, balance),
-   every decision made this run and its outcome, open threads for the next run.
-5. Commit everything.
+The run is ending now. Leave the business in a safe state: nothing half-finished
+(commit or revert), builds green, healthy running things (ads, the app) left
+running. Write a final report of this run's decisions and outcomes in
+BUSINESS_LOG.md and commit everything.
 """

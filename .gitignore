@@ -227,3 +227,4 @@ credentials.env
 *.mobileprovision
 # Node
 node_modules/
+.vercel

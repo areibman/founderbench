@@ -35,14 +35,17 @@ export class BudgetMonitor {
     let status: BudgetStatus = "ok";
     const tokenSpend = this.tokenSpendUsd();
 
+    const warnFraction = this.cfg.warn_fraction ?? 0.8;
     const evaluate = (value: number, cap: number, label: string) => {
       if (cap <= 0) return;
       if (value >= cap) {
         status = "breach";
         reasons.push(`${label}: $${value.toFixed(2)} >= cap $${cap}`);
-      } else if (value >= cap * 0.8 && status === "ok") {
+      } else if (value >= cap * warnFraction && status === "ok") {
         status = "warning";
-        reasons.push(`${label}: $${value.toFixed(2)} at 80% of cap $${cap}`);
+        reasons.push(
+          `${label}: $${value.toFixed(2)} at ${Math.round(warnFraction * 100)}% of cap $${cap}`,
+        );
       }
     };
     evaluate(tokenSpend, this.cfg.max_token_spend_usd, "token spend");

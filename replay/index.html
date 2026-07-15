@@ -75,6 +75,8 @@ function summarize(e) {
   switch (cat(e.type)) {
     case "model":
       if (e.type === "model.request") {
+        // New traces: light index + bodyFile. Old traces: inline body.
+        if (d.bodyFile) return `→ ${d.path || ""} ${d.model || ""} (${d.messageCount ?? "?"} msgs)`;
         const msgs = d.body?.messages;
         const last = Array.isArray(msgs) ? msgs[msgs.length-1] : null;
         return `→ ${d.path || ""} ${typeof last?.content === "string" ? last.content.slice(0,180) : ""}`;
@@ -131,6 +133,10 @@ function detail(e) {
   if (typeof file === "string" && file.includes("/runs/")) {
     const rel = file.slice(file.indexOf("/runs/") + 6);
     html += `<img src="/runs/${rel}" alt="screenshot" /><br><br>`;
+  }
+  if (typeof e.data?.bodyFile === "string" && runId) {
+    html += `<div class="kv"><a href="/runs/${runId}/${e.data.bodyFile}" target="_blank"
+      style="color:var(--accent)">⤓ full raw body (${e.data.bodyFile})</a></div>`;
   }
   html += `<pre>${escapeHtml(JSON.stringify(e.data, null, 2))}</pre>`;
   if (e.parentId) {
