@@ -47,7 +47,7 @@ not to grow the business. Do NOT spend any money (no ads, no purchases).
 
 Work through this checklist, verifying each item and recording results in BUSINESS_LOG.md:
 1. Read AGENTS.md. List your available tools and skills.
-2. Build the app and run its tests (load the ship-release skill; stop before archive).
+2. Build the app and run its tests (see the xcode-cli skill; stop before archive).
 3. Boot a simulator, launch the app, take a screenshot.
 4. Check App Store Connect: current live version, latest reviews (asc CLI).
 5. Check RevenueCat overview (tools/revenuecat.sh overview).

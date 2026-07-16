@@ -55,10 +55,11 @@ snapshot → click by ref), `xc` (Xcode/simulator CLI), `gh`,
 
 ## Skills
 
-Reference cards for how the tools and accounts are wired, loaded on demand with
-the `skill` tool: `ship-release`, `revenuecat-ops`, `run-ads`, `support-inbox`,
-`finance-review`, `web-research`, plus the installed `asc` and `agent-browser`
-vendor skills.
+Fact sheets for the tools above (what exists, how it's authenticated, how to
+discover commands), loaded on demand with the `skill` tool: `asc-cli`,
+`xcode-cli`, `meta-ads`, `bank`, `revenuecat`, `fastmail`, `web-tools`, plus
+the installed `asc` and `agent-browser` vendor skills. How to combine tools to
+get anything done is up to you.
 
 ## When blocked
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RevenueCat CLI wrapper (REST API v2). Used by the agent via the revenuecat-ops skill.
+# RevenueCat CLI wrapper (REST API v2). Documented for the agent by the revenuecat skill.
 # Requires: REVENUECAT_API_KEY, REVENUECAT_PROJECT_ID (from credentials.env).
 #
 # Usage:

@@ -24,8 +24,8 @@ since we can't wrap hosted servers locally.
 | --- | --- | --- | --- |
 | `asc` | `brew install asc` + `asc install-skills` | vendor skills (23) | App Store Connect: publish, TestFlight, metadata, reviews, sales, screenshots, **Apple Ads** |
 | `agent-browser` | `brew install agent-browser` | vendor skill | authenticated browser automation (snapshot/ref workflow) |
-| `xc` | `go install github.com/tmc/axmcp/cmd/xc@latest` | ship-release | CLI twin of xcmcp |
-| `tools/revenuecat.sh` | this repo | revenuecat-ops | MRR/churn/offerings/entitlements via REST v2 |
+| `xc` | `go install github.com/tmc/axmcp/cmd/xc@latest` | xcode-cli | CLI twin of xcmcp |
+| `tools/revenuecat.sh` | this repo | revenuecat | MRR/churn/offerings/entitlements via REST v2 |
 | `tools/fastmail-jmap.sh` | this repo | — (orchestrator-side) | scripted inbox monitoring + credential verification |
 | `gh` | brew | — | issues, PRs, repo ops (fine-grained PAT, app repo only) |
 

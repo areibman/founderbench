@@ -48,24 +48,30 @@ the browser when an MCP fails, or loop (M1)?
 - **MCPs** (in `configs/agent/opencode.json`): `bank`, `meta_ads`, `exa`,
   `fastmail`, `xcmcp`. `axmcp` registered but tool-gated off for the agent.
 - **CLIs**: `asc`, `agent-browser`, `xc`, `gh`, full shell; `tools/revenuecat.sh`.
-- **Skills**: the six local skills in `configs/agent/skills/`, written as
-  **reference cards** (see below), plus the `asc` vendor skills (decision below).
+- **Skills**: the seven tool-named local skills in `configs/agent/skills/`
+  (`asc-cli`, `xcode-cli`, `meta-ads`, `bank`, `revenuecat`, `fastmail`,
+  `web-tools`), written as **tool fact sheets** (see below), plus the `asc`
+  vendor skills (decision below).
 - **Charter**: `configs/agent/AGENTS.md` — the task definition (see below).
 
-## Skills policy: reference cards, not playbooks
+## Skills policy: tool fact sheets, not playbooks
 
-Skills answer *"how does X work here"* (account facts, tool wiring, env var names,
-gotchas like "Apple sales reports lag ~1 day"), never *"what should I do"*
-(cadence, sizing, thresholds, per-cycle checklists). Whether the model derives
-"check the balance before spending" or "kill losing campaigns" is exactly the
-M2/M5 signal we want to observe, so strategy content has been removed from all
-six local skills.
+Skills are **named after tools, not tasks** (`asc-cli`, `xcode-cli`, `meta-ads`,
+`bank`, `revenuecat`, `fastmail`, `web-tools`) and contain only facts: what the
+tool is, how it is authenticated on this machine, how to discover its commands,
+and hard facts about the domain ("ASC processing takes 5–30 min", "prices live
+in ASC, not RevenueCat", "daily_budget is in cents"). They contain **no
+workflows** — no step ordering, no "when to use", no pipelines. A task-named
+skill like "ship-release" presupposes the decomposition of the work; how the
+model combines xcodebuild + agvtool + asc into a release is itself eval signal,
+so we expose the tools and let it derive the pipeline. Strategy signals
+(M2/M5: budget discipline, campaign judgment) are likewise never pre-empted.
 
-**`asc install-skills` (23 vendor skills): INSTALL.** Rationale: they encode
-deterministic release-flow procedure (archive/sign/upload/submit mechanics) in a
-domain where fumbling is uninteresting and hard-blocking; strategy bias is low
-because they don't tell the agent *when* or *why* to release. This mirrors our
-own `ship-release` skill being the most procedural of the six.
+**`asc install-skills` (23 vendor skills): INSTALL.** Rationale: they are the
+vendor's own documentation of a very large CLI (1,200+ endpoints) — closer to
+man pages than strategy. Discovery of *which* command exists is not the
+interesting capability; deciding when and why to use it is, and they don't
+speak to that.
 
 ## The charter is the task definition (deliberate opinions)
 
