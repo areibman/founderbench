@@ -94,6 +94,10 @@ function summarize(e) {
     case "env":
       if (e.type === "env.dialog") return `DIALOG ${d.process}: "${d.window}" → ${d.dismissedVia || "not dismissed"}`;
       if (e.type === "env.screenshot") return d.reason;
+      if (e.type === "env.fs") {
+        const sample = (d.changes || d.sample || []).slice(0,3).map(c => c.path).join(", ");
+        return `${d.changedPaths ?? (d.changes||[]).length} path(s) changed: ${sample}`;
+      }
       return (d.message || "").slice(0,180);
     case "git": return `${(d.sha||"").slice(0,8)} ${d.message || ""}`;
     case "metrics": return `snapshot: ${Object.keys(d.results||{}).join(", ")} | $tok=${(d.tokenSpendUsd??0).toFixed(2)}`;

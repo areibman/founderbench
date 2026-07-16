@@ -15,5 +15,10 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["orchestrator/src/**/*.ts", "tracing/src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "orchestrator/src/**/*.ts",
+    "tools/meta-ads-mcp/src/**/*.ts",
+    "tracing/src/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

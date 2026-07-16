@@ -45,21 +45,28 @@ max_business_spend_usd = 0
 [metrics]
 interval_minutes = 3
 
+# Exercise the fs watcher locally, scoped to the throwaway workspace.
+[fswatch]
+enabled = true
+path = "/tmp/fb-orch-smoke"
+flush_seconds = 10
+exclude = [".git/objects", ".git/index.lock"]
+
 [metrics.commands]
 git_head = "git log -1 --oneline"
 
 [prompts]
 kickoff = """
 This is a short orchestrator smoke run in a throwaway workspace. Read AGENTS.md.
-Then: append a timestamped entry to BUSINESS_LOG.md noting the run has started
+Then: append a timestamped entry to SMOKE_REPORT.md noting the run has started
 and listing the files in this workspace, and commit it. Keep the turn short and
 then stop.
 """
 continue = """
-Heartbeat: you are idle. Append one more timestamped entry to BUSINESS_LOG.md
+Heartbeat: you are idle. Append one more timestamped entry to SMOKE_REPORT.md
 (a short fun fact is fine), commit it, then stop.
 """
 wrapup = """
-The smoke run is ending. Append a final timestamped entry to BUSINESS_LOG.md
+The smoke run is ending. Append a final timestamped entry to SMOKE_REPORT.md
 summarizing how many entries you made, commit it, and stop.
 """

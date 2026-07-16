@@ -43,18 +43,10 @@ log "Symlinking founderbench tools/ into the workspace"
 ln -sfn "$FB_ROOT/tools" "$TARGET/tools"
 ok "tools → $FB_ROOT/tools"
 
-log "Seeding BUSINESS_LOG.md"
-if [[ ! -f "$TARGET/BUSINESS_LOG.md" ]]; then
-  cat > "$TARGET/BUSINESS_LOG.md" <<'EOF'
-# Business Log
-
-Decision journal. Every operating cycle appends an entry:
-what was observed, what was decided, why, and what happened.
-EOF
-  ok "BUSINESS_LOG.md created"
-else
-  ok "BUSINESS_LOG.md exists"
-fi
+# NOTE: we deliberately do NOT seed any log/journal file. Whether and how the
+# agent keeps records (notes, logs, TODO files) is eval signal — a pre-seeded
+# file with instructions in it would contaminate that observation.
+# (docs/experiment-design.md, "deliberately uninstructed")
 
 log "Installing git hooks for trace collection"
 HOOK="$TARGET/.git/hooks/post-commit"

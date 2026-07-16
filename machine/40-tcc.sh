@@ -27,7 +27,7 @@ SYS_TCC="/Library/Application Support/com.apple.TCC/TCC.db"
 resolve() { sudo -u "$AGENT_USER" -H bash -lc "command -v $1" 2>/dev/null || true; }
 
 CLIENTS=()
-for cmd in axmcp xcmcp ax xc computer-use-mcp opencode node; do
+for cmd in axmcp xcmcp ax xc computer-use-mcp peekaboo opencode node; do
   p="$(resolve "$cmd")"
   [[ -n "$p" ]] && CLIENTS+=("$p")
 done

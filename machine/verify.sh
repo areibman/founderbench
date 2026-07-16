@@ -33,9 +33,10 @@ v "SSH enabled"                        bash -c 'systemsetup -getremotelogin 2>/d
 v "GUI console session owned by us"    bash -c '[[ "$(stat -f%Su /dev/console)" == "$(whoami)" ]]'
 
 log "══ 2. Toolchain ══"
-for c in git gh node go jq xcbeautify xcodes asc agent-browser opencode; do
+for c in git gh node go jq xcbeautify xcodes asc agent-browser opencode peekaboo; do
   v "cli: $c" command -v "$c"
 done
+v "peekaboo permissions granted" bash -c 'peekaboo permissions status 2>/dev/null | grep -qiv denied'
 for c in axmcp xcmcp ax xc computer-use-mcp; do
   v "cli: $c" bash -c "command -v $c || command -v \$HOME/go/bin/$c"
 done

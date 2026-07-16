@@ -32,8 +32,12 @@
       "enabled": true
     },
     "meta_ads": {
-      "type": "remote",
-      "url": "https://meta-ads.mcp.pipeboard.co/",
+      "type": "local",
+      "command": [
+        "bash",
+        "-lc",
+        "exec \"$(git rev-parse --show-toplevel)/tools/meta-ads-mcp.sh\""
+      ],
       "enabled": true
     },
     "exa": {

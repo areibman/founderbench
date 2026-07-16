@@ -8,6 +8,7 @@
  * machine/70-agent-workspace.sh (writes directly to trace.jsonl via $FB_TRACE_DIR).
  */
 import { execFile } from "node:child_process";
+import { watch } from "node:fs";
 import { join } from "node:path";
 import { TraceStore } from "./trace.ts";
 
@@ -109,6 +110,85 @@ function extractSessionId(properties: unknown): string | undefined {
     | { sessionID?: string; info?: { sessionID?: string }; part?: { sessionID?: string } }
     | undefined;
   return p?.sessionID ?? p?.info?.sessionID ?? p?.part?.sessionID;
+}
+
+/**
+ * Filesystem watcher: recursive FSEvents watch over a root (typically the agent
+ * user's home), recording every changed path as env.fs trace events. This is
+ * the whole-machine analog of the app repo's git history: it catches writes
+ * anywhere, committed or not.
+ *
+ * Changes are aggregated per flush window (path → event count) so build storms
+ * become one event, not fifty thousand. Nothing is dropped: oversized batches
+ * spill verbatim to a side file via TraceStore.saveBody(). The exclude list is
+ * config-declared and recorded in run.start — a visible filter, not a silent one.
+ */
+export class FsWatchCollector {
+  private watcher: import("node:fs").FSWatcher | null = null;
+  private timer: NodeJS.Timeout | null = null;
+  private pending = new Map<string, { count: number; first: number; last: number }>();
+
+  constructor(
+    private readonly trace: TraceStore,
+    private readonly root: string,
+    private readonly exclude: string[],
+    private readonly flushMs: number,
+  ) {}
+
+  start(): void {
+    try {
+      this.watcher = watch(this.root, { recursive: true }, (eventType, filename) => {
+        if (!filename) return;
+        const path = filename.toString();
+        if (this.exclude.some((pattern) => path.includes(pattern))) return;
+        const now = Date.now();
+        const entry = this.pending.get(path);
+        if (entry) {
+          entry.count++;
+          entry.last = now;
+        } else {
+          this.pending.set(path, { count: 1, first: now, last: now });
+        }
+      });
+    } catch (err) {
+      this.trace.emit("env.error", "fswatch", {
+        message: `fswatch failed to start on ${this.root}: ${String(err)}`,
+      });
+      return;
+    }
+    this.timer = setInterval(() => this.flush(), this.flushMs);
+    this.trace.emit("harness.event", "fswatch", {
+      type: "collector.started",
+      root: this.root,
+      exclude: this.exclude,
+    });
+  }
+
+  stop(): void {
+    this.flush();
+    if (this.timer) clearInterval(this.timer);
+    this.watcher?.close();
+    this.watcher = null;
+  }
+
+  flush(): void {
+    if (this.pending.size === 0) return;
+    const changes = [...this.pending.entries()].map(([path, e]) => ({ path, ...e }));
+    this.pending.clear();
+    const payload = { root: this.root, changedPaths: changes.length, changes };
+    // Build storms produce huge batches — keep trace.jsonl light, lose nothing.
+    if (changes.length > 500) {
+      const file = this.trace.saveBody(`fs-${Date.now()}.json`, JSON.stringify(payload, null, 2));
+      this.trace.emit("env.fs", "fswatch", {
+        root: this.root,
+        changedPaths: changes.length,
+        bodyFile: file,
+        sample: changes.slice(0, 25),
+      });
+    } else {
+      this.trace.emit("env.fs", "fswatch", payload);
+    }
+  }
 }
 
 /** Periodic desktop screenshots — visual record + dialog-watchdog evidence. */

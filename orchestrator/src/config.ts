@@ -63,6 +63,18 @@ export interface RunConfig {
     /** Shell commands run on each snapshot; stdout captured into the trace. */
     commands: Record<string, string>;
   };
+  /** Filesystem watcher: records every path changed under `path` (recursive,
+   * FSEvents) as env.fs trace events. Excludes are a declared, config-visible
+   * filter (they appear in run.start) — not silent editorializing. */
+  fswatch?: {
+    enabled: boolean;
+    /** Root to watch; "~" expands to the agent user's home. */
+    path: string;
+    /** Path substrings to ignore (churn dirs: caches, DerivedData, ...). */
+    exclude: string[];
+    /** Batch window: changes are aggregated and flushed on this interval. */
+    flush_seconds?: number;
+  };
   prompts: {
     kickoff: string;
     /** Injected whenever the agent goes idle. */

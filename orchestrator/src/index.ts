@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { TraceStore } from "../../tracing/src/trace.ts";
 import { InterceptionProxy } from "../../tracing/src/proxy.ts";
-import { SseCollector, ScreenshotCollector } from "../../tracing/src/collectors.ts";
+import { SseCollector, ScreenshotCollector, FsWatchCollector } from "../../tracing/src/collectors.ts";
 import { loadRunConfig, loadCredentialsEnv, FB_ROOT, type RunConfig } from "./config.ts";
 import { OpenCodeServer } from "./opencode.ts";
 import { DialogWatchdog } from "./watchdog.ts";
@@ -60,6 +60,7 @@ class Orchestrator {
   private readonly opencode: OpenCodeServer;
   private readonly sse: SseCollector;
   private readonly screenshots: ScreenshotCollector;
+  private readonly fswatch: FsWatchCollector | null;
   private readonly watchdog: DialogWatchdog;
   private readonly budget: BudgetMonitor;
   private readonly metrics: MetricsCollector;
@@ -95,6 +96,14 @@ class Orchestrator {
       this.trace,
       cfg.heartbeat.screenshot_interval_seconds * 1000,
     );
+    this.fswatch = cfg.fswatch?.enabled
+      ? new FsWatchCollector(
+          this.trace,
+          cfg.fswatch.path.replace(/^~(?=\/|$)/, process.env.HOME ?? "~"),
+          cfg.fswatch.exclude,
+          (cfg.fswatch.flush_seconds ?? 15) * 1000,
+        )
+      : null;
     this.watchdog = new DialogWatchdog(
       this.trace,
       this.screenshots,
@@ -141,6 +150,7 @@ class Orchestrator {
     this.screenshots.start();
     this.watchdog.start();
     this.metrics.start();
+    this.fswatch?.start();
 
     // Create or resume the session.
     if (this.sessionId) {
@@ -300,6 +310,7 @@ class Orchestrator {
     this.watchdog.stop();
     this.screenshots.stop();
     this.metrics.stop();
+    this.fswatch?.stop();
     await this.opencode.stop();
     await this.proxy.stop();
     // Marker file tells the launchd wrapper not to restart us.

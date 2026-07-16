@@ -68,6 +68,16 @@ else
   warn "REVENUECAT_API_KEY/PROJECT_ID not set (required before pilot, optional for machine setup)"
 fi
 
+log "── Meta Ads (direct Graph API) ──"
+if [[ -n "${META_ACCESS_TOKEN:-}" && -n "${META_AD_ACCOUNT_ID:-}" ]]; then
+  must "Meta Ads: configured ad account readable" \
+    curl -sf --max-time 20 \
+      "https://graph.facebook.com/${META_GRAPH_API_VERSION:-v25.0}/${META_AD_ACCOUNT_ID}?fields=id,name,account_status" \
+      -H "Authorization: Bearer $META_ACCESS_TOKEN"
+else
+  fail "META_ACCESS_TOKEN/META_AD_ACCOUNT_ID not set"; FAILURES=$((FAILURES+1))
+fi
+
 log "── Fastmail (JMAP) ──"
 if [[ -n "${FASTMAIL_JMAP_TOKEN:-}" ]]; then
   must "Fastmail: JMAP session fetch" \
@@ -97,7 +107,7 @@ fi
 log "── OAuth-based MCPs (verified in stage 65) ──"
 MCP_AUTH_FILE="$HOME/.local/share/opencode/mcp-auth.json"
 if [[ -f "$MCP_AUTH_FILE" ]]; then
-  for server in meta_ads fastmail bank; do
+  for server in fastmail bank; do
     if jq -e --arg s "$server" 'has($s)' "$MCP_AUTH_FILE" >/dev/null 2>&1; then
       ok "opencode mcp auth: $server credentials stored"
     else

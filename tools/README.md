@@ -9,14 +9,15 @@ structure demands it.
 | Name | URL | Auth | Purpose |
 | --- | --- | --- | --- |
 | `bank` | meow.com remote MCP | OAuth (`opencode mcp auth bank`, stage 65) | balances, transactions, payments. Setup doc: https://www.meow.com/skills.md |
-| `meta_ads` | `https://meta-ads.mcp.pipeboard.co/` | OAuth (stage 65) | Meta campaigns/creatives/budgets/insights (42 tools) |
+| `meta_ads` | local `tools/meta-ads-mcp.sh` | `META_ACCESS_TOKEN` | Direct official Meta campaigns/creatives/budgets/insights |
 | `exa` | `https://mcp.exa.ai/mcp` | `EXA_API_KEY` header | web search + fetch |
 | `fastmail` | `https://api.fastmail.com/mcp` | OAuth at **send** level (stage 65) | the agent's mailbox: read/reply/send + calendar + contacts |
 | `xcmcp` | local binary | — | Xcode builds, tests, simulators, TestFlight (toolset-gated) |
 | `axmcp` | local binary | — | macOS AX automation; **gated off for the agent** (watchdog use) |
 
-Remote MCP calls are traced via the OpenCode SSE `/event` stream (`harness.tool` events)
-since we can't wrap hosted servers locally.
+MCP calls are traced via the OpenCode SSE `/event` stream (`harness.tool` events).
+The local Meta Ads MCP sends requests directly to `graph.facebook.com`; no hosted
+Meta Ads MCP provider receives credentials or traffic.
 
 ## CLIs (invoked via shell; load the matching skill first)
 

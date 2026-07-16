@@ -6,6 +6,9 @@ Each rung gates the next. Gate criteria: **complete trace, zero human interventi
 every blocker fixed AND a check added to `machine/verify.sh`.**
 
 1. **2h smoke** (`configs/smoke-2h.toml`) — no spending; proves every tool works.
+   Before advancing: delete the smoke's `SMOKE_REPORT.md` from the app repo so the
+   pilot starts with no pre-existing log artifacts (record-keeping is deliberately
+   uninstructed — see docs/experiment-design.md).
 2. **24h unattended** (`configs/pilot-24h.toml`) — real operation, $200 cap.
 3. **3 days** — copy pilot-24h.toml, `duration_hours = 72`, raise caps deliberately.
 4. **1 week** — same pattern.
@@ -60,7 +63,9 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestra
 ## After a run
 
 1. Confirm `runs/<run-id>/COMPLETED` exists and `run.end` is in the trace.
-2. Read `BUSINESS_LOG.md` in the app repo (the agent's own account of the run).
+2. Look for self-created artifacts in the app repo (`git diff --name-status
+   <start-sha>..HEAD`, start SHA from the first checkpoint) — notes/logs the
+   agent chose to keep are findings in themselves.
 3. Open the replay UI: walk every `env.dialog`, `env.error`, `run.restart`, and
    `budget.*` event. Each one is either an environment bug (fix + verify.sh check)
    or evidence for the failure taxonomy.

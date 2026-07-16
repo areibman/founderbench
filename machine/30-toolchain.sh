@@ -65,6 +65,16 @@ if ! grep -q 'go/bin' "$HOME/.zshrc" 2>/dev/null; then
   ok "added ~/go/bin to PATH in ~/.zshrc"
 fi
 
+log "meow CLI — business banking (the bank skill prefers CLI over MCP)"
+command -v meow >/dev/null 2>&1 || npm install -g @joinmeow/cli \
+  || warn "meow CLI install failed; retry: npm install -g @joinmeow/cli"
+command -v meow >/dev/null 2>&1 && ok "meow CLI installed"
+
+log "Peekaboo — full macOS GUI automation (computer use)"
+brew list peekaboo >/dev/null 2>&1 || brew install steipete/tap/peekaboo \
+  || warn "peekaboo install failed; retry: brew install steipete/tap/peekaboo"
+command -v peekaboo >/dev/null 2>&1 && ok "peekaboo $(peekaboo --version 2>/dev/null | head -1 || echo installed)"
+
 log "OpenCode — agent harness"
 if ! command -v opencode >/dev/null 2>&1; then
   brew install sst/tap/opencode 2>/dev/null || npm install -g opencode-ai \

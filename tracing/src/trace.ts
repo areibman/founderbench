@@ -29,6 +29,7 @@ export type TraceEventType =
   // environment
   | "env.dialog"
   | "env.screenshot"
+  | "env.fs"
   | "env.error"
   // business side effects
   | "git.commit"

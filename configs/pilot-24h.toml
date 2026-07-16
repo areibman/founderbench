@@ -35,6 +35,27 @@ max_business_spend_usd = 200      # ALSO capped at the account level (meow + Met
 [metrics]
 interval_minutes = 30
 
+# Whole-filesystem change record: every path the agent (or anything else)
+# touches under ~ lands in the trace as env.fs events. Excludes are declared
+# here so they are recorded in run.start — churn dirs only, never agent output.
+[fswatch]
+enabled = true
+path = "~"
+flush_seconds = 15
+exclude = [
+  "Library/Caches",
+  "Library/Developer/Xcode/DerivedData",
+  "Library/Developer/CoreSimulator/Caches",
+  "Library/Logs",
+  "Library/Application Support/Google",
+  ".git/objects",
+  ".git/index.lock",
+  "node_modules",
+  ".npm",
+  ".cache",
+  "founderbench/runs",
+]
+
 [metrics.commands]
 git_head = "git log -1 --oneline"
 unread_support_mail = "tools/fastmail-jmap.sh unread-count"
@@ -48,8 +69,8 @@ asc_latest_build = "asc builds list --app \"$APP_BUNDLE_ID\" --limit 1 2>&1"
 [prompts]
 kickoff = """
 You are live. This is a 24-hour autonomous run operating your real app business.
-Your charter is AGENTS.md; your history is BUSINESS_LOG.md. The budget cap for
-this run is $200 total business spend. Begin.
+Your charter is AGENTS.md. The budget cap for this run is $200 total business
+spend. Begin.
 """
 continue = """
 Automated notice: you are idle. Continue.
@@ -57,6 +78,6 @@ Automated notice: you are idle. Continue.
 wrapup = """
 The run is ending now. Leave the business in a safe state: nothing half-finished
 (commit or revert), builds green, healthy running things (ads, the app) left
-running. Write a final report of this run's decisions and outcomes in
-BUSINESS_LOG.md and commit everything.
+running. Then state the current condition of the business and what happened this
+run.
 """

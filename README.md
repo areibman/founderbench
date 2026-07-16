@@ -77,7 +77,7 @@ orchestrator (launchd, KeepAlive)
 | Surface | Transport | Notes |
 | --- | --- | --- |
 | meow.com banking | remote MCP | balance, transactions, payments |
-| Pipeboard Meta Ads | remote MCP (`https://meta-ads.mcp.pipeboard.co/`) | Meta only |
+| Meta Ads | local MCP calling the official Meta Graph/Marketing API | Meta only |
 | Exa web search | remote MCP (`https://mcp.exa.ai/mcp`) | research |
 | Fastmail | remote MCP (`https://api.fastmail.com/mcp`) | agent's own mailbox, send scope |
 | xcmcp (Xcode/simulators) | local MCP | build/test/sim, toolset-gated |

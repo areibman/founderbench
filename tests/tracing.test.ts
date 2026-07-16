@@ -4,8 +4,10 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { TraceStore } from "../tracing/src/trace.ts";
 import { InterceptionProxy } from "../tracing/src/proxy.ts";
+import { FsWatchCollector } from "../tracing/src/collectors.ts";
 
 test("TraceStore appends and reads back typed events", () => {
   const dir = mkdtempSync(join(tmpdir(), "fb-trace-"));
@@ -98,6 +100,31 @@ test("proxy forwards JSON requests, traces both sides, extracts usage", async ()
   } finally {
     await proxy.stop();
     upstream.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("fswatch records changed paths and honors declared excludes", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "fb-fsw-"));
+  const watched = join(dir, "watched");
+  mkdirSync(join(watched, "excluded-dir"), { recursive: true });
+  try {
+    const trace = new TraceStore(dir, "fsw-run");
+    const collector = new FsWatchCollector(trace, watched, ["excluded-dir"], 60_000);
+    collector.start();
+    await new Promise((r) => setTimeout(r, 100)); // watcher warm-up
+    writeFileSync(join(watched, "NOTES.md"), "agent artifact");
+    writeFileSync(join(watched, "excluded-dir", "cache.bin"), "churn");
+    await new Promise((r) => setTimeout(r, 300)); // FSEvents delivery
+    collector.stop(); // flushes pending
+
+    const fsEvents = trace.read().filter((e) => e.type === "env.fs");
+    assert.equal(fsEvents.length, 1);
+    const data = fsEvents[0]!.data as { changes: Array<{ path: string }> };
+    const paths = data.changes.map((c) => c.path);
+    assert.ok(paths.some((p) => p.includes("NOTES.md")), "records the artifact write");
+    assert.ok(!paths.some((p) => p.includes("excluded-dir")), "honors the exclude");
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });

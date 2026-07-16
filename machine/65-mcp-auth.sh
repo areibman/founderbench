@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 65: one-time OAuth for remote MCPs (Pipeboard Meta Ads, Fastmail, meow bank).
+# Stage 65: one-time OAuth for remote MCPs (Fastmail and meow bank).
 # Run as the agent user, INTERACTIVELY, on the Mac (needs a browser once).
 # After this stage, no run should ever hit a login prompt.
 #
@@ -23,7 +23,7 @@ cd "$WORKSPACE" || die "workspace not found: $WORKSPACE"
 log "MCP servers configured:"
 opencode mcp list || warn "opencode mcp list failed — is opencode.json present in $WORKSPACE?"
 
-for server in meta_ads fastmail bank; do
+for server in fastmail bank; do
   echo
   log "Authorizing MCP: $server (browser will open — complete the OAuth consent)"
   if opencode mcp auth "$server"; then
@@ -37,5 +37,5 @@ echo
 log "Verifying auth status:"
 opencode mcp auth list 2>/dev/null || opencode mcp list
 
-log "Stage 65 complete. Reminder: for Fastmail choose the 'send' access level;"
-log "for Pipeboard connect the Meta ad account with spending caps already set."
+log "Stage 65 complete. Reminder: for Fastmail choose the 'send' access level."
+log "Meta Ads uses META_ACCESS_TOKEN directly and does not use MCP OAuth."

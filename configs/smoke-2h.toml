@@ -45,7 +45,7 @@ kickoff = """
 This is a 2-hour SMOKE RUN of your environment. Your job is to prove every tool works,
 not to grow the business. Do NOT spend any money (no ads, no purchases).
 
-Work through this checklist, verifying each item and recording results in BUSINESS_LOG.md:
+Work through this checklist, verifying each item and recording results in SMOKE_REPORT.md:
 1. Read AGENTS.md. List your available tools and skills.
 2. Build the app and run its tests (see the xcode-cli skill; stop before archive).
 3. Boot a simulator, launch the app, take a screenshot.
@@ -55,17 +55,17 @@ Work through this checklist, verifying each item and recording results in BUSINE
 7. Check Meta ad account status (meta_ads MCP) — read only, do not create anything.
 8. Read the support inbox (fastmail MCP) — reply only if something urgent is waiting.
 9. Do one small web research task (exa): list the top 3 competitors.
-10. Commit BUSINESS_LOG.md with a full report: what worked, what failed, exact errors.
+10. Commit SMOKE_REPORT.md with a full report: what worked, what failed, exact errors.
 
 If a tool fails, record the exact error and move on. A complete failure report is a
 successful smoke run.
 """
 continue = """
 Heartbeat: you are idle. Continue the smoke-run checklist from where you left off.
-If the checklist is complete, review BUSINESS_LOG.md for gaps, then do a deeper
+If the checklist is complete, review SMOKE_REPORT.md for gaps, then do a deeper
 verification pass on anything that failed the first time.
 """
 wrapup = """
-The smoke run is ending. Finalize BUSINESS_LOG.md now: summarize every tool's status
+The smoke run is ending. Finalize SMOKE_REPORT.md now: summarize every tool's status
 (working / broken + error), commit, and stop.
 """

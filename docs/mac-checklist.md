@@ -47,6 +47,7 @@ with snapshot/restore — never a shared login.
 | 2.9 | `asc` CLI + skills | `asc --version`; skills in `~/.claude/skills/` |
 | 2.10 | `agent-browser` + Chrome for Testing | `agent-browser doctor` |
 | 2.11 | axmcp binaries (axmcp, xcmcp, ax, xc, computer-use-mcp) | `command -v axmcp xcmcp ax xc computer-use-mcp` |
+| 2.11b | Peekaboo (full GUI automation) + permissions | `peekaboo permissions status`; `peekaboo list apps` |
 | 2.12 | OpenCode | `opencode --version` |
 | 2.13 | Fastlane (fallback) | `fastlane --version` |
 | 2.14 | founderbench npm deps | `cd founderbench && npm install` exits 0 |
@@ -77,7 +78,7 @@ with snapshot/restore — never a shared login.
 | 4.4 | Provisioning profiles installed (or ASC-managed) | `ls ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/` |
 | 4.5 | GitHub fine-grained PAT (app repo only) | `GH_TOKEN=... gh repo view <slug>` |
 | 4.6 | Model API key (MiniMax/GLM) | curl chat-completion round trip |
-| 4.7 | Pipeboard Meta Ads OAuth | `opencode mcp auth list` shows `meta_ads`; ad account read via agent |
+| 4.7 | Direct Meta Ads token | `machine/60-credentials.sh` reads the configured ad account; local `meta_ads` MCP lists tools |
 | 4.8 | RevenueCat secret key | `curl api.revenuecat.com/v2/projects/<id>` |
 | 4.9 | meow bank MCP OAuth | `opencode mcp auth list` shows `bank`; balance read via agent |
 | 4.10 | Fastmail account + JMAP token | `curl api.fastmail.com/jmap/session` |
