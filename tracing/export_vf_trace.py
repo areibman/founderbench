@@ -161,9 +161,10 @@ def main() -> None:
             env_summary["nudges"] += 1
 
     run_id = (run_start or {}).get("runId") or run_dir.name
+    kickoff = (((run_start or {}).get("config") or {}).get("prompts") or {}).get("kickoff", "")
     trace = Trace(
         id=run_id,
-        task=TraceTask(type="founderbench", data={"runId": run_id}),
+        task=TraceTask(type="founderbench", data={"idx": 0, "prompt": kickoff}),
     )
 
     turns = skipped = 0
@@ -206,7 +207,7 @@ def main() -> None:
     out.write_text(trace.model_dump_json(indent=2))
     print(
         f"exported {run_id}: {turns} turns, {len(trace.nodes)} nodes, "
-        f"{trace.num_branches} branch(es), {trace.total_tokens} tokens "
+        f"{trace.num_branches} branch(es), {trace.num_total_tokens} tokens "
         f"({skipped} non-completion/failed calls skipped) → {out}"
     )
 

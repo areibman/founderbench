@@ -81,7 +81,13 @@ export class InterceptionProxy {
     const reqBodyFile = bodyRaw.length
       ? this.opts.trace.saveBody(`${requestId}.req.json`, bodyRaw)
       : null;
-    const parsed = bodyJson as { model?: string; messages?: unknown[] } | undefined;
+    // Chat Completions carries "messages"; the Responses API carries "input".
+    const parsed = bodyJson as { model?: string; messages?: unknown[]; input?: unknown } | undefined;
+    const items = Array.isArray(parsed?.messages)
+      ? parsed.messages
+      : Array.isArray(parsed?.input)
+        ? parsed.input
+        : undefined;
     this.opts.trace.emit(
       "model.request",
       "proxy",
@@ -92,7 +98,7 @@ export class InterceptionProxy {
         upstream: url,
         bodyFile: reqBodyFile,
         model: parsed?.model,
-        messageCount: Array.isArray(parsed?.messages) ? parsed.messages.length : undefined,
+        messageCount: items?.length,
       },
       { parentId: requestId },
     );
@@ -178,7 +184,12 @@ function safeJson(text: string): unknown {
   }
 }
 
-/** Collapse an SSE stream into the concatenated assistant text + keep the last usage frame. */
+/**
+ * Collapse an SSE stream into the concatenated assistant text + a frame count.
+ * Understands both dialects: Chat Completions (`choices[].delta.content`) and
+ * the Responses API (`response.output_text.delta` events). Convenience only —
+ * the lossless record is always the raw side file.
+ */
 function sseToText(sse: string): { text: string; frames: number } {
   let text = "";
   let frames = 0;
@@ -189,8 +200,16 @@ function sseToText(sse: string): { text: string; frames: number } {
     if (payload === "[DONE]") continue;
     try {
       const j = JSON.parse(payload) as {
+        // chat-completions dialect
         choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
+        // responses dialect
+        type?: string;
+        delta?: string;
       };
+      if (j.type === "response.output_text.delta" && typeof j.delta === "string") {
+        text += j.delta;
+        continue;
+      }
       const delta = j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.message?.content;
       if (delta) text += delta;
     } catch {
@@ -200,17 +219,39 @@ function sseToText(sse: string): { text: string; frames: number } {
   return { text, frames };
 }
 
-/** Pull token usage out of a JSON or SSE response (OpenAI-compatible shape). */
+interface WireUsage {
+  // chat-completions naming
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  // responses-API naming
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
+/**
+ * Pull token usage out of a JSON or SSE response body. Handles both dialects:
+ * Chat Completions (`usage.prompt_tokens/completion_tokens`, in the final SSE
+ * frames) and the Responses API (`usage.input_tokens/output_tokens`, top-level
+ * when non-streaming, under `response.usage` in the `response.completed` event
+ * when streaming). Budget enforcement depends on this — keep both paths green.
+ */
 function extractUsage(
   body: string,
   isSSE: boolean,
 ): { inputTokens: number; outputTokens: number } | null {
-  const tryUsage = (obj: unknown): { inputTokens: number; outputTokens: number } | null => {
-    const u = (obj as { usage?: { prompt_tokens?: number; completion_tokens?: number } })?.usage;
-    if (u && (u.prompt_tokens != null || u.completion_tokens != null)) {
+  const fromWire = (u: WireUsage | undefined): { inputTokens: number; outputTokens: number } | null => {
+    if (!u) return null;
+    if (u.prompt_tokens != null || u.completion_tokens != null) {
       return { inputTokens: u.prompt_tokens ?? 0, outputTokens: u.completion_tokens ?? 0 };
     }
+    if (u.input_tokens != null || u.output_tokens != null) {
+      return { inputTokens: u.input_tokens ?? 0, outputTokens: u.output_tokens ?? 0 };
+    }
     return null;
+  };
+  const tryUsage = (obj: unknown): { inputTokens: number; outputTokens: number } | null => {
+    const o = obj as { usage?: WireUsage; response?: { usage?: WireUsage } } | undefined;
+    return fromWire(o?.usage) ?? fromWire(o?.response?.usage);
   };
   if (!isSSE) {
     try {
@@ -219,7 +260,8 @@ function extractUsage(
       return null;
     }
   }
-  // SSE: usage usually arrives in one of the final frames.
+  // SSE: usage arrives in one of the final frames (chat) or in the
+  // response.completed event (responses). Scan from the end.
   const lines = body.split("\n").filter((l) => l.startsWith("data:"));
   for (let i = lines.length - 1; i >= 0; i--) {
     const payload = lines[i]!.slice(5).trim();
