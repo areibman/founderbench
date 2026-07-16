@@ -3,11 +3,13 @@ command = "/Users/reibs/Projects/founderbench/tools/meta-ads-mcp.sh"
 cwd = "/Users/reibs/Projects/founderbench"
 env_vars = [
   "META_ACCESS_TOKEN",
+  "META_ALLOW_ACTIVATION",
   "META_AD_ACCOUNT_ID",
   "META_APP_SECRET",
   "META_BUSINESS_ID",
   "META_GRAPH_API_VERSION",
   "META_MAX_DAILY_BUDGET_MINOR",
+  "META_MAX_LIFETIME_BUDGET_MINOR",
   "META_PAGE_IDS",
 ]
 startup_timeout_sec = 20

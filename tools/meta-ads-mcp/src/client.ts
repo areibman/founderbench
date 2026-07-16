@@ -1,5 +1,9 @@
 import { createHmac } from "node:crypto";
-import { normalizeAccountId, type MetaRuntimeConfig } from "./config.ts";
+import {
+  META_GRAPH_BASE_URL,
+  normalizeAccountId,
+  type MetaRuntimeConfig,
+} from "./config.ts";
 
 export type GraphScalar = string | number | boolean | null | undefined;
 export type GraphValue = GraphScalar | Record<string, unknown> | unknown[];
@@ -94,19 +98,78 @@ export class MetaGraphClient {
     return accountId;
   }
 
+  writeAccountId(requested?: string): string {
+    const configured = this.config.accountId;
+    if (!configured) {
+      throw new Error(
+        "META_AD_ACCOUNT_ID is not configured; refusing every Meta write even when account_id is supplied",
+      );
+    }
+    const accountId = requested ? normalizeAccountId(requested) : configured;
+    if (accountId !== configured) {
+      throw new Error(`Account ${accountId} is outside the configured Meta account allowlist`);
+    }
+    return configured;
+  }
+
   assertPageAllowed(pageId: string): void {
-    if (this.config.pageIds.size > 0 && !this.config.pageIds.has(pageId)) {
+    if (this.config.pageIds.size === 0) {
+      throw new Error("META_PAGE_IDS is not configured; refusing creative write");
+    }
+    if (!this.config.pageIds.has(pageId)) {
       throw new Error(`Page ${pageId} is outside META_PAGE_IDS`);
     }
   }
 
-  enforceDailyBudget(value: unknown): void {
-    const cap = this.config.maxDailyBudgetMinor;
-    if (cap === undefined || value === undefined || value === null) return;
+  private enforceBudget(
+    value: unknown,
+    cap: number | undefined,
+    field: "daily_budget" | "lifetime_budget",
+    capName: "META_MAX_DAILY_BUDGET_MINOR" | "META_MAX_LIFETIME_BUDGET_MINOR",
+  ): void {
+    if (value === undefined || value === null) return;
     const budget = Number(value);
-    if (!Number.isFinite(budget) || budget < 0) throw new Error("daily_budget must be numeric");
+    if (!Number.isSafeInteger(budget) || budget < 0) {
+      throw new Error(`${field} must be a non-negative integer in the account's minor unit`);
+    }
+    if (cap === undefined) {
+      throw new Error(`${capName} is not configured; refusing ${field} mutation`);
+    }
     if (budget > cap) {
-      throw new Error(`daily_budget ${budget} exceeds META_MAX_DAILY_BUDGET_MINOR=${cap}`);
+      throw new Error(`${field} ${budget} exceeds ${capName}=${cap}`);
+    }
+  }
+
+  enforceDailyBudget(value: unknown): void {
+    this.enforceBudget(
+      value,
+      this.config.maxDailyBudgetMinor,
+      "daily_budget",
+      "META_MAX_DAILY_BUDGET_MINOR",
+    );
+  }
+
+  enforceLifetimeBudget(value: unknown): void {
+    this.enforceBudget(
+      value,
+      this.config.maxLifetimeBudgetMinor,
+      "lifetime_budget",
+      "META_MAX_LIFETIME_BUDGET_MINOR",
+    );
+  }
+
+  assertActivationAllowed(status: unknown): void {
+    if (typeof status !== "string" || status.trim().toUpperCase() !== "ACTIVE") return;
+    if (!this.config.allowActivation) {
+      throw new Error("META_ALLOW_ACTIVATION=true is required before setting status ACTIVE");
+    }
+    if (
+      this.config.maxDailyBudgetMinor === undefined ||
+      this.config.maxLifetimeBudgetMinor === undefined
+    ) {
+      throw new Error(
+        "META_MAX_DAILY_BUDGET_MINOR and META_MAX_LIFETIME_BUDGET_MINOR are both required before setting status ACTIVE",
+      );
     }
   }
 
@@ -116,7 +179,7 @@ export class MetaGraphClient {
       fields: "id,account_id",
     });
     if (!object.account_id) {
-      throw new Error(`Meta object ${objectId} did not expose account_id; refusing write`);
+      throw new Error(`Meta object ${objectId} did not expose account_id; refusing scoped operation`);
     }
     if (normalizeAccountId(object.account_id) !== allowedAccount) {
       throw new Error(`Meta object ${objectId} does not belong to ${allowedAccount}`);
@@ -138,9 +201,7 @@ export class MetaGraphClient {
   async request<T = unknown>(path: string, options: GraphRequestOptions = {}): Promise<T> {
     const token = this.requireToken();
     const cleanPath = path.replace(/^\/+/, "");
-    const url = new URL(
-      `${this.config.graphBaseUrl}/${this.config.graphApiVersion}/${cleanPath}`,
-    );
+    const url = new URL(`${META_GRAPH_BASE_URL}/${this.config.graphApiVersion}/${cleanPath}`);
     appendParams(url.searchParams, options.query);
 
     if (this.config.appSecret) {

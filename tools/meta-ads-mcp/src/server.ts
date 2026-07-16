@@ -7,7 +7,11 @@ import {
   type GraphParams,
   type GraphValue,
 } from "./client.ts";
-import { loadMetaRuntimeConfig, type MetaRuntimeConfig } from "./config.ts";
+import {
+  loadMetaRuntimeConfig,
+  META_GRAPH_BASE_URL,
+  type MetaRuntimeConfig,
+} from "./config.ts";
 
 const READ_ONLY = {
   readOnlyHint: true,
@@ -67,14 +71,33 @@ function listParams(limit: number | undefined, after: string | undefined): Graph
   return { limit: limit ?? 100, after };
 }
 
-function extractPageId(spec: Record<string, unknown>): string | undefined {
-  if (typeof spec.page_id === "string") return spec.page_id;
-  const story = spec.object_story_spec;
-  if (story && typeof story === "object" && "page_id" in story) {
-    const pageId = (story as { page_id?: unknown }).page_id;
-    if (typeof pageId === "string") return pageId;
-  }
+function pageIdValue(value: unknown): string | undefined {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return value.trim();
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return String(value);
   return undefined;
+}
+
+function objectStoryPageId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return /^(\d+)_\d+$/.exec(value.trim())?.[1];
+}
+
+function extractCreativePageIds(spec: Record<string, unknown>): Set<string> {
+  const pageIds = new Set<string>();
+  const rootPageId = pageIdValue(spec.page_id);
+  const rootStoryPageId = objectStoryPageId(spec.object_story_id);
+  if (rootPageId) pageIds.add(rootPageId);
+  if (rootStoryPageId) pageIds.add(rootStoryPageId);
+
+  const story = spec.object_story_spec;
+  if (story && typeof story === "object") {
+    const storySpec = story as Record<string, unknown>;
+    const storyPageId = pageIdValue(storySpec.page_id);
+    const nestedStoryPageId = objectStoryPageId(storySpec.object_story_id);
+    if (storyPageId) pageIds.add(storyPageId);
+    if (nestedStoryPageId) pageIds.add(nestedStoryPageId);
+  }
+  return pageIds;
 }
 
 function objectFields(fields: string | undefined, defaults: string): string {
@@ -103,6 +126,51 @@ export function createMetaAdsServer(
 ) {
   const client = new MetaGraphClient(config, fetchImpl);
   const server = new McpServer({ name: "founderbench-meta-ads", version: "1.0.0" });
+
+  server.registerTool(
+    "get_mcp_status",
+    {
+      description:
+        "Report local MCP provenance and credential/allowlist readiness without making a network request or revealing secrets.",
+      inputSchema: {},
+      annotations: READ_ONLY,
+    },
+    () =>
+      run(async () => ({
+        identity: "founderbench-local-meta-ads",
+        transport: "local stdio",
+        upstream: {
+          provider: "official Meta Graph/Marketing API",
+          origin: META_GRAPH_BASE_URL,
+          graph_api_version: config.graphApiVersion,
+          hosted_mcp_broker: false,
+        },
+        configured: {
+          access_token: Boolean(config.accessToken),
+          app_secret: Boolean(config.appSecret),
+          ad_account_allowlist: Boolean(config.accountId),
+          page_allowlist: config.pageIds.size > 0,
+          page_allowlist_count: config.pageIds.size,
+          daily_budget_ceiling: config.maxDailyBudgetMinor !== undefined,
+          lifetime_budget_ceiling: config.maxLifetimeBudgetMinor !== undefined,
+          activation_opt_in: config.allowActivation,
+        },
+        ready: {
+          reads: Boolean(config.accessToken),
+          writes: Boolean(config.accessToken && config.accountId),
+          creative_writes: Boolean(
+            config.accessToken && config.accountId && config.pageIds.size > 0,
+          ),
+          activation: Boolean(
+            config.accessToken &&
+              config.accountId &&
+              config.allowActivation &&
+              config.maxDailyBudgetMinor !== undefined &&
+              config.maxLifetimeBudgetMinor !== undefined
+          ),
+        },
+      })),
+  );
 
   server.registerTool(
     "get_ad_accounts",
@@ -242,8 +310,10 @@ export function createMetaAdsServer(
       annotations: READ_ONLY,
     },
     ({ account_id, after, campaign_id, limit }) =>
-      run(() => {
-        const edge = campaign_id ? `${campaign_id}/adsets` : `${client.accountId(account_id)}/adsets`;
+      run(async () => {
+        const account = client.accountId(account_id);
+        if (campaign_id) await client.assertObjectOwned(campaign_id, account);
+        const edge = campaign_id ? `${campaign_id}/adsets` : `${account}/adsets`;
         return client.get(edge, {
           ...listParams(limit, after),
           fields:
@@ -287,12 +357,18 @@ export function createMetaAdsServer(
       annotations: READ_ONLY,
     },
     ({ account_id, adset_id, after, campaign_id, limit }) =>
-      run(() => {
+      run(async () => {
+        if (adset_id && campaign_id) {
+          throw new Error("Supply either adset_id or campaign_id, not both");
+        }
+        const account = client.accountId(account_id);
+        if (adset_id) await client.assertObjectOwned(adset_id, account);
+        if (campaign_id) await client.assertObjectOwned(campaign_id, account);
         const edge = adset_id
           ? `${adset_id}/ads`
           : campaign_id
             ? `${campaign_id}/ads`
-            : `${client.accountId(account_id)}/ads`;
+            : `${account}/ads`;
         return client.get(edge, {
           ...listParams(limit, after),
           fields:
@@ -336,13 +412,15 @@ export function createMetaAdsServer(
       annotations: READ_ONLY,
     },
     ({ account_id, ad_id, after, limit }) =>
-      run(() =>
-        client.get(ad_id ? `${ad_id}/adcreatives` : `${client.accountId(account_id)}/adcreatives`, {
+      run(async () => {
+        const account = client.accountId(account_id);
+        if (ad_id) await client.assertObjectOwned(ad_id, account);
+        return client.get(ad_id ? `${ad_id}/adcreatives` : `${account}/adcreatives`, {
           ...listParams(limit, after),
           fields:
             "id,account_id,name,status,thumbnail_url,image_hash,image_url,object_story_spec,asset_feed_spec,effective_object_story_id,object_type,url_tags,body,title,created_time",
-        }),
-      ),
+        });
+      }),
   );
 
   server.registerTool(
@@ -475,9 +553,10 @@ export function createMetaAdsServer(
     },
     ({ account_id, extra, name, objective, special_ad_categories }) =>
       run(() => {
-        const account = client.accountId(account_id);
+        const account = client.writeAccountId(account_id);
         const safeExtra = sanitizeChanges(extra ?? {});
         client.enforceDailyBudget(safeExtra.daily_budget);
+        client.enforceLifetimeBudget(safeExtra.lifetime_budget);
         return client.post(`${account}/campaigns`, {
           ...safeExtra,
           name,
@@ -524,9 +603,10 @@ export function createMetaAdsServer(
       targeting,
     }) =>
       run(async () => {
-        const account = client.accountId(account_id);
+        const account = client.writeAccountId(account_id);
         await client.assertObjectOwned(campaign_id, account);
         client.enforceDailyBudget(daily_budget);
+        client.enforceLifetimeBudget(lifetime_budget);
         return client.post(`${account}/adsets`, {
           ...sanitizeChanges(extra ?? {}),
           billing_event,
@@ -548,7 +628,7 @@ export function createMetaAdsServer(
     "create_ad_creative",
     {
       description:
-        "Create an ad creative directly through Meta. spec is the official AdCreative payload and is restricted to META_PAGE_IDS when configured.",
+        "Create an ad creative directly through Meta. spec must identify exactly one Page in the required META_PAGE_IDS allowlist.",
       inputSchema: {
         account_id: accountIdSchema,
         confirm: confirmSchema,
@@ -559,9 +639,19 @@ export function createMetaAdsServer(
     },
     ({ account_id, name, spec }) =>
       run(() => {
-        const account = client.accountId(account_id);
-        const pageId = extractPageId(spec);
-        if (pageId) client.assertPageAllowed(pageId);
+        const account = client.writeAccountId(account_id);
+        const pageIds = extractCreativePageIds(spec);
+        if (pageIds.size === 0) {
+          throw new Error(
+            "Creative spec must identify one allowlisted Page using page_id, object_story_spec.page_id, or object_story_id",
+          );
+        }
+        if (pageIds.size > 1) {
+          throw new Error("Creative spec contains conflicting Page identities");
+        }
+        const pageId = pageIds.values().next().value;
+        if (!pageId) throw new Error("Creative spec does not contain a valid Page ID");
+        client.assertPageAllowed(pageId);
         return client.post(`${account}/adcreatives`, {
           ...sanitizeChanges(spec),
           name,
@@ -585,7 +675,7 @@ export function createMetaAdsServer(
     },
     ({ account_id, adset_id, creative_id, extra, name }) =>
       run(async () => {
-        const account = client.accountId(account_id);
+        const account = client.writeAccountId(account_id);
         await client.assertObjectOwned(adset_id, account);
         await client.assertObjectOwned(creative_id, account);
         return client.post(`${account}/ads`, {
@@ -616,7 +706,10 @@ export function createMetaAdsServer(
         const bytes = Buffer.from(base64, "base64");
         if (bytes.length === 0) throw new Error("image_base64 is empty or invalid");
         if (bytes.length > 20 * 1024 * 1024) throw new Error("Image exceeds the 20 MiB local limit");
-        return client.post(`${client.accountId(account_id)}/adimages`, { bytes: base64, name });
+        return client.post(`${client.writeAccountId(account_id)}/adimages`, {
+          bytes: base64,
+          name,
+        });
       }),
   );
 
@@ -639,11 +732,13 @@ export function createMetaAdsServer(
       },
       (args) =>
         run(async () => {
-          const account = client.accountId(args.account_id);
+          const account = client.writeAccountId(args.account_id);
           const objectId = args[idName] as string;
           const changes = sanitizeChanges(args.changes);
           await client.assertObjectOwned(objectId, account);
+          client.assertActivationAllowed(changes.status);
           client.enforceDailyBudget(changes.daily_budget);
+          client.enforceLifetimeBudget(changes.lifetime_budget);
           if (typeof changes.creative_id === "string") {
             await client.assertObjectOwned(changes.creative_id, account);
             changes.creative = { creative_id: changes.creative_id };
@@ -683,7 +778,7 @@ export function createMetaAdsServer(
     },
     ({ account_id, creative_id }) =>
       run(async () => {
-        const account = client.accountId(account_id);
+        const account = client.writeAccountId(account_id);
         await client.assertObjectOwned(creative_id, account);
         return client.delete(creative_id);
       }),
@@ -701,7 +796,9 @@ export function createMetaAdsServer(
       annotations: DESTRUCTIVE,
     },
     ({ account_id, image_hash }) =>
-      run(() => client.delete(`${client.accountId(account_id)}/adimages`, { hash: image_hash })),
+      run(() =>
+        client.delete(`${client.writeAccountId(account_id)}/adimages`, { hash: image_hash }),
+      ),
   );
 
   server.registerTool(
@@ -716,7 +813,7 @@ export function createMetaAdsServer(
       annotations: WRITE,
     },
     ({ account_id, name }) =>
-      run(() => client.post(`${client.accountId(account_id)}/adspixels`, { name })),
+      run(() => client.post(`${client.writeAccountId(account_id)}/adspixels`, { name })),
   );
 
   return { client, server };

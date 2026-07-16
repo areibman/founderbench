@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const SOURCE_DIR = dirname(fileURLToPath(import.meta.url));
 export const FB_ROOT = resolve(SOURCE_DIR, "../../..");
+export const META_GRAPH_BASE_URL = "https://graph.facebook.com";
 
 function unquote(value: string): string {
   if (
@@ -63,14 +64,19 @@ function optionalPositiveInteger(value: string | undefined, name: string): numbe
   return parsed;
 }
 
+function explicitTrue(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "true";
+}
+
 export interface MetaRuntimeConfig {
   accessToken: string;
   accountId?: string;
   appSecret?: string;
+  allowActivation: boolean;
   businessId?: string;
   graphApiVersion: string;
-  graphBaseUrl: string;
   maxDailyBudgetMinor?: number;
+  maxLifetimeBudgetMinor?: number;
   pageIds: Set<string>;
 }
 
@@ -86,12 +92,16 @@ export function loadMetaRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Met
     accessToken: env.META_ACCESS_TOKEN?.trim() ?? "",
     accountId: env.META_AD_ACCOUNT_ID ? normalizeAccountId(env.META_AD_ACCOUNT_ID) : undefined,
     appSecret: env.META_APP_SECRET?.trim() || undefined,
+    allowActivation: explicitTrue(env.META_ALLOW_ACTIVATION),
     businessId: env.META_BUSINESS_ID?.trim() || undefined,
     graphApiVersion,
-    graphBaseUrl: (env.META_GRAPH_BASE_URL || "https://graph.facebook.com").replace(/\/$/, ""),
     maxDailyBudgetMinor: optionalPositiveInteger(
       env.META_MAX_DAILY_BUDGET_MINOR,
       "META_MAX_DAILY_BUDGET_MINOR",
+    ),
+    maxLifetimeBudgetMinor: optionalPositiveInteger(
+      env.META_MAX_LIFETIME_BUDGET_MINOR,
+      "META_MAX_LIFETIME_BUDGET_MINOR",
     ),
     pageIds: commaSeparated(env.META_PAGE_IDS),
   };

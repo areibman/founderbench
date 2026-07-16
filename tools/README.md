@@ -17,7 +17,11 @@ structure demands it.
 
 MCP calls are traced via the OpenCode SSE `/event` stream (`harness.tool` events).
 The local Meta Ads MCP sends requests directly to `graph.facebook.com`; no hosted
-Meta Ads MCP provider receives credentials or traffic.
+Meta Ads MCP provider receives credentials or traffic. Call `get_mcp_status` to
+verify that provenance and local readiness without revealing credentials. All
+writes require a configured ad-account allowlist; creative writes additionally
+require a Page allowlist. ACTIVE updates require an explicit opt-in and both daily
+and lifetime local budget ceilings.
 
 ## CLIs (invoked via shell; load the matching skill first)
 
@@ -47,7 +51,8 @@ Every important action must land in the run trace:
 ## Blast-radius rules (account level — the real containment)
 
 - meow account: spending limit configured in-dashboard; card limits per merchant.
-- Meta ad account: account-level spending cap set BEFORE stage 65 OAuth.
+- Meta ad account: account-level spending cap plus local daily/lifetime ceilings
+  set before enabling activation.
 - Apple: dedicated developer team; app-scoped ASC API key.
 - GitHub: fine-grained PAT scoped to the single app repo.
 - Fastmail: dedicated account; masked emails for third-party signups.

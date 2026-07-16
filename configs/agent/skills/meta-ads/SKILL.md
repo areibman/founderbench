@@ -16,8 +16,10 @@ Read credentials from the gitignored `credentials.env`:
 - `META_ACCESS_TOKEN`: preferably a System User token from the business's Meta app.
 - `META_AD_ACCOUNT_ID`: the only ad account this MCP may operate.
 - `META_APP_SECRET`: optional but recommended; adds `appsecret_proof` to requests.
-- `META_PAGE_IDS`: optional comma-separated Page allowlist for creative writes.
-- `META_MAX_DAILY_BUDGET_MINOR`: optional daily-budget ceiling in the account's minor unit.
+- `META_PAGE_IDS`: required comma-separated Page allowlist for creative writes.
+- `META_MAX_DAILY_BUDGET_MINOR`: ceiling required for any daily-budget mutation.
+- `META_MAX_LIFETIME_BUDGET_MINOR`: ceiling required for any lifetime-budget mutation.
+- `META_ALLOW_ACTIVATION`: leave false unless live activation is explicitly authorized.
 - `META_GRAPH_API_VERSION`: pinned Graph API version, currently `v25.0`.
 
 The token needs `ads_read` for reads and `ads_management` for writes. Add
@@ -26,18 +28,23 @@ commit, or pass the token as a tool argument.
 
 ## Safety contract
 
-- Keep every call inside `META_AD_ACCOUNT_ID`; the server rejects account overrides.
-- Keep creative writes inside `META_PAGE_IDS` when it is configured.
+- Start with `get_mcp_status`. Require identity `founderbench-local-meta-ads`, local
+  stdio transport, upstream origin `https://graph.facebook.com`, and no hosted broker.
+- Keep every write inside configured `META_AD_ACCOUNT_ID`; no caller-supplied fallback exists.
+- Require each creative to identify exactly one Page in `META_PAGE_IDS`, including
+  an `object_story_id` Page prefix when using an existing post.
 - Pass `confirm: true` for every write.
 - New campaigns, ad sets, and ads always start `PAUSED`.
-- Check the account-level spend cap before activating anything.
+- Refuse budget writes above the matching daily or lifetime local ceiling.
+- Activate only when `META_ALLOW_ACTIVATION=true`, both local ceilings are set,
+  billing/creative/targeting are verified, and the account-level spend cap is confirmed.
 - Read the object back after every write. For deletions, re-list the parent edge.
 - Treat `status` and `effective_status` separately. A child may remain configured
   `ACTIVE` while being effectively deleted by its parent.
 
 ## Discovery workflow
 
-1. Call `get_ad_accounts`, then `get_account_info`.
+1. Call `get_mcp_status`, then `get_ad_accounts` and `get_account_info`.
 2. Call `get_account_pages`, `get_instagram_accounts`, and `get_pixels`.
 3. Call `get_campaigns`, `get_adsets`, `get_ads`, `get_ad_creatives`, and
    `list_ad_images` with pagination until no `paging.next` remains.
@@ -56,8 +63,10 @@ visible ads when locating orphaned or historical media dependencies.
    `spec`.
 5. Create a paused ad with `create_ad`.
 6. Read back every object and preview it in Ads Manager.
-7. Activate the ad set, ad, and campaign only after billing, targeting, schedule,
-   attribution, Page identity, destination, and budget are verified.
+7. If live activation is authorized, configure `META_ALLOW_ACTIVATION=true` plus
+   both budget ceilings, then activate the ad set, ad, and campaign only after
+   billing, targeting, schedule, attribution, Page identity, destination, and
+   budget are verified.
 
 Budgets are integers in the account's minor currency unit; USD values are cents.
 App-install campaign objective is `OUTCOME_APP_PROMOTION`.
@@ -81,6 +90,8 @@ children and creative references behind.
   assignment, and that the ad account is `ACTIVE` rather than pending closure.
 - Object rejected as outside allowlist: fix `META_AD_ACCOUNT_ID` or `META_PAGE_IDS`;
   do not weaken the guard for convenience.
+- Activation refused: keep objects paused unless live activation was authorized;
+  then set the explicit opt-in and both daily and lifetime ceilings.
 - Image still used: locate hashes through account-wide `get_ad_creatives`, delete or
   detach the referencing ads, delete the creatives, then retry the image.
 - Rate limit: honor Meta's retry guidance and reduce pagination size or call volume.
