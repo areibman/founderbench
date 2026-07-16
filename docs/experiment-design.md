@@ -49,13 +49,13 @@ the browser when an MCP fails, or loop (M1)?
   `fastmail`, `xcmcp`. `axmcp` registered but tool-gated off for the agent.
 - **CLIs**: `asc`, `agent-browser`, `xc`, `peekaboo`, `gh`, full shell;
   `tools/revenuecat.sh`.
-- **Skills**: the nine tool-named local skills in `configs/agent/skills/`
+- **Skills**: the ten tool-named local skills in `configs/agent/skills/`
   (`asc-cli`, `xcode-cli`, `meta-ads`, `bank`, `revenuecat`, `fastmail`,
-  `exa-search`, `agent-browser`, `computer-use`). Where the vendor publishes
-  an official skill, we use it verbatim (meow/bank, Peekaboo/computer-use,
+  `exa-search`, `agent-browser`, `computer-use`, `vncdotool`). Where the vendor
+  publishes an official skill, we use it verbatim (meow/bank, Peekaboo/computer-use,
   asc-cli, agent-browser, exa-search); otherwise the card is assembled from
   the vendor's official docs with a provenance comment (meta-ads, revenuecat,
-  fastmail). Plus the `asc` vendor skill pack (decision below).
+  fastmail, vncdotool). Plus the `asc` vendor skill pack (decision below).
 
 **Full computer-use access is proven in the run context, not just at setup.**
 TCC attributes permissions to the responsible process, which differs between a
