@@ -102,6 +102,59 @@ test("proxy forwards JSON requests, traces both sides, extracts usage", async ()
   }
 });
 
+test("proxy extracts usage and text from Responses-API SSE (gpt-5.6 dialect)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "fb-resp-"));
+  const frames = [
+    `event: response.created\ndata: {"type":"response.created","response":{"id":"resp_1"}}\n\n`,
+    `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Hel"}\n\n`,
+    `event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"lo"}\n\n`,
+    `event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":11,"output_tokens":4,"total_tokens":15}}}\n\n`,
+  ];
+  const upstream = createServer((req, res) => {
+    assert.ok(req.url?.endsWith("/responses"), "proxy forwards /v1/responses path");
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    for (const f of frames) res.write(f);
+    res.end();
+  });
+  await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+  const upPort = (upstream.address() as { port: number }).port;
+
+  const trace = new TraceStore(dir, "resp-run");
+  const proxy = new InterceptionProxy({
+    port: 41913,
+    upstreamUrl: `http://127.0.0.1:${upPort}`,
+    trace,
+  });
+  await proxy.start();
+  try {
+    await fetch("http://127.0.0.1:41913/v1/responses", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.6-sol", input: [{ role: "user", content: "hi" }], stream: true }),
+      headers: { "content-type": "application/json" },
+    }).then((r) => r.text());
+
+    const events = trace.read();
+    const request = events.find((e) => e.type === "model.request")!;
+    const reqData = request.data as { model: string; messageCount: number };
+    assert.equal(reqData.model, "gpt-5.6-sol");
+    assert.equal(reqData.messageCount, 1); // counted from "input", not "messages"
+
+    const response = events.find((e) => e.type === "model.response")!;
+    const data = response.data as { body: { text: string }; bodyFile: string };
+    assert.equal(data.body.text, "Hello");
+    assert.equal(proxy.usage.inputTokens, 11); // input_tokens naming
+    assert.equal(proxy.usage.outputTokens, 4);
+
+    // Raw SSE side file preserves every event verbatim.
+    const rawSse = readFileSync(join(trace.runDir, data.bodyFile), "utf8");
+    assert.equal(rawSse, frames.join(""));
+  } finally {
+    await proxy.stop();
+    upstream.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("proxy tees SSE streams and collapses them for the trace", async () => {
   const dir = mkdtempSync(join(tmpdir(), "fb-sse-"));
   const frames = [

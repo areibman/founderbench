@@ -66,6 +66,12 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestra
    or evidence for the failure taxonomy.
 4. Snapshot the machine state if anything drifted: `sudo tmutil localsnapshot`.
 5. File the run summary in `docs/` (metrics + failure taxonomy classification).
+6. Export researcher-facing trace formats (both schema-validated by construction):
+
+```sh
+uv run tracing/export_vf_trace.py runs/<run-id>   # verifiers v1 Trace (message graph, branches)
+uv run tracing/export_atif.py runs/<run-id>       # Harbor ATIF-v1.7 trajectory.json (steps, tools, reasoning)
+```
 
 ## Resume semantics
 

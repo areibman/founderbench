@@ -1,0 +1,64 @@
+# FounderBench local smoke — GPT-5.6 Sol over the OpenAI Responses API.
+# Goal: prove the full capture pipeline against the production model/dialect:
+# proxy passthrough of /v1/responses, usage extraction (input_tokens naming),
+# raw SSE side files (reasoning items + tool-call events), budget enforcement,
+# and the vf.Trace export.
+#
+# Usage:
+#   export MODEL_API_KEY=<funded OpenAI API key>
+#   npm run orchestrator -- --config configs/smoke-sol.toml
+# Workspace /tmp/fb-sol-smoke must exist (git repo with opencode.json pointing
+# provider npm @ai-sdk/openai at http://127.0.0.1:41500/v1).
+
+[run]
+name = "smoke-sol"
+duration_hours = 0.15          # ~9 minutes
+wrapup_minutes = 2
+
+[model]
+provider_id = "founderbench"
+model_id = "gpt-5.6-sol"
+upstream_url = "https://api.openai.com/v1"
+proxy_port = 41500
+
+[workspace]
+dir = "/tmp/fb-sol-smoke"
+
+[opencode]
+port = 41400
+agent = "build"
+
+[heartbeat]
+stall_after_minutes = 4
+max_nudges_before_restart = 2
+watchdog_interval_seconds = 3600     # needs mini TCC grants; disabled locally
+screenshot_interval_seconds = 3600
+checkpoint_interval_seconds = 60
+
+[budget]
+max_token_spend_usd = 5              # Sol is pricey; cap the experiment
+input_cost_per_mtok = 5.0            # gpt-5.6-sol GA pricing
+output_cost_per_mtok = 30.0
+max_business_spend_usd = 0
+
+[metrics]
+interval_minutes = 3
+
+[metrics.commands]
+git_head = "git log -1 --oneline"
+
+[prompts]
+kickoff = """
+This is a short orchestrator smoke run in a throwaway workspace. Read AGENTS.md.
+Then: append a timestamped entry to BUSINESS_LOG.md noting the run has started
+and listing the files in this workspace, and commit it. Keep the turn short and
+then stop.
+"""
+continue = """
+Automated notice: you are idle. Append one more timestamped entry to
+BUSINESS_LOG.md (a short fun fact is fine), commit it, then stop.
+"""
+wrapup = """
+The smoke run is ending. Append a final timestamped entry to BUSINESS_LOG.md
+summarizing how many entries you made, commit it, and stop.
+"""
