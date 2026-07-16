@@ -30,6 +30,7 @@ export type TraceEventType =
   | "env.dialog"
   | "env.screenshot"
   | "env.fs"
+  | "env.preflight"
   | "env.error"
   // business side effects
   | "git.commit"

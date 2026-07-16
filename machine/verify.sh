@@ -36,7 +36,6 @@ log "══ 2. Toolchain ══"
 for c in git gh node go jq xcbeautify xcodes asc agent-browser opencode peekaboo; do
   v "cli: $c" command -v "$c"
 done
-v "peekaboo permissions granted" bash -c 'peekaboo permissions status 2>/dev/null | grep -qiv denied'
 for c in axmcp xcmcp ax xc computer-use-mcp; do
   v "cli: $c" bash -c "command -v $c || command -v \$HOME/go/bin/$c"
 done
@@ -52,6 +51,8 @@ v "codesign identity valid"            bash -c 'security find-identity -v -p cod
 v "screencapture works (Screen Recording TCC)" bash -c 'screencapture -x /tmp/fb-verify-screen.png && [[ -s /tmp/fb-verify-screen.png ]]'
 v "AX API reachable (Accessibility TCC)" bash -c 'AXBIN=$(command -v ax || echo $HOME/go/bin/ax); "$AXBIN" apps 2>/dev/null | head -1 | grep -q .'
 v "osascript System Events (AppleEvents TCC)" osascript -e 'tell application "System Events" to count processes'
+v "peekaboo permissions granted" bash -c 'peekaboo permissions status 2>&1 | grep -qiv denied'
+v "passwordless sudo (agent autonomy)" sudo -n true
 
 log "══ 4. Credentials (live) ══"
 bash ./60-credentials.sh >/dev/null 2>&1 && { ok "60-credentials.sh passes"; PASS=$((PASS+1)); } \

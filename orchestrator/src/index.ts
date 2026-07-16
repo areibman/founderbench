@@ -19,6 +19,7 @@ import { InterceptionProxy } from "../../tracing/src/proxy.ts";
 import { SseCollector, ScreenshotCollector, FsWatchCollector } from "../../tracing/src/collectors.ts";
 import { loadRunConfig, loadCredentialsEnv, FB_ROOT, type RunConfig } from "./config.ts";
 import { OpenCodeServer } from "./opencode.ts";
+import { capabilityPreflight } from "./preflight.ts";
 import { DialogWatchdog } from "./watchdog.ts";
 import { BudgetMonitor } from "./budget.ts";
 import { MetricsCollector } from "./metrics.ts";
@@ -136,6 +137,10 @@ class Orchestrator {
       resumed: this.sessionId !== null,
       endAt: this.endAt,
     });
+
+    // Prove full computer-use access from inside THIS process tree (TCC
+    // attribution differs from Terminal/SSH where verify.sh runs).
+    await capabilityPreflight(this.trace);
 
     await this.proxy.start();
     await this.opencode.start();

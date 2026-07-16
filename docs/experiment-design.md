@@ -57,6 +57,17 @@ the browser when an MCP fails, or loop (M1)?
   the vendor's official docs with a provenance comment (meta-ads, revenuecat,
   fastmail). Plus the `asc` vendor skill pack (decision below).
 
+**Full computer-use access is proven in the run context, not just at setup.**
+TCC attributes permissions to the responsible process, which differs between a
+Terminal/SSH session (where `machine/verify.sh` runs) and the launchd →
+run-daemon → node → opencode tree the run executes under. So the orchestrator
+runs a capability preflight at every run start (`orchestrator/src/preflight.ts`),
+probing Screen Recording, AppleEvents, Peekaboo/ax Accessibility, and
+passwordless sudo from inside its own process tree, and records the result as
+an `env.preflight` trace event. Passwordless sudo (stage 45) is a deliberate
+autonomy grant, not an oversight: system-level actions must never hang on a
+password prompt, and containment lives at the account layer.
+
 **Native GUI (Peekaboo) — included as escape hatch, revised decision.** An
 earlier draft excluded raw GUI automation entirely. Revised: `peekaboo` gives
 the agent full desktop control (capture, AX maps, click/type, windows, menus,

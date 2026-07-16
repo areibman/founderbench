@@ -24,6 +24,7 @@ STAGES=(
   "20-updates.sh:root"
   "30-toolchain.sh:user"
   "40-tcc.sh:root"
+  "45-sudo.sh:root"
   "50-keychain.sh:user"
   "60-credentials.sh:user"
   "65-mcp-auth.sh:user"

@@ -61,6 +61,8 @@ with snapshot/restore — never a shared login.
 | 3.3 | Full Disk Access | orchestrator can read `~/Library/...` paths |
 | 3.4 | AppleEvents (System Events) | `osascript -e 'tell app "System Events" to count processes'` (no prompt) |
 | 3.5 | UI-automation mode enabled | `automationmodetool status` |
+| 3.5b | Passwordless sudo (agent autonomy, stage 45) | `sudo -n true` (no prompt) |
+| 3.5c | Full computer-use access in the RUN context (not just Terminal) | `env.preflight` event at run start shows `ok:true` |
 | 3.6 | Build keychain exists, unlocked, 6h timeout | `security show-keychain-info founderbench.keychain-db` |
 | 3.7 | Signing cert imported, partition list set | `security find-identity -v -p codesigning founderbench.keychain-db` |
 | 3.8 | codesign runs non-interactively | archive step in `verify.sh` (no dialog) |
