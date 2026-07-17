@@ -50,8 +50,9 @@ v "build keychain unlockable"          bash -c 'security show-keychain-info foun
 if [[ -n "${APPLE_CERT_P12:-}" ]]; then
   v "codesign identity valid (p12 mode)" bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -qv "0 valid"'
 else
-  v "cloud signing ready (no p12: ASC p8 + team id)" \
-    bash -c '[[ -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -f "${ASC_PRIVATE_KEY_PATH/#\~/$HOME}" ]]'
+  # Team ID is agent-discoverable — only gate on the ASC key material.
+  v "cloud signing ready (no p12: ASC key + .p8)" \
+    bash -c '[[ -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" && -f "${ASC_PRIVATE_KEY_PATH/#\~/$HOME}" ]]'
 fi
 v "screencapture works (Screen Recording TCC)" bash -c 'screencapture -x /tmp/fb-verify-screen.png && [[ -s /tmp/fb-verify-screen.png ]]'
 v "AX API reachable (Accessibility TCC)" bash -c 'AXBIN=$(command -v ax || echo $HOME/go/bin/ax); "$AXBIN" apps 2>/dev/null | head -1 | grep -q .'
@@ -64,12 +65,13 @@ bash ./60-credentials.sh >/dev/null 2>&1 && { ok "60-credentials.sh passes"; PAS
   || { fail "60-credentials.sh FAILED — run it directly for details"; FAIL=$((FAIL+1)); }
 
 log "══ 5. End-to-end app build proof ══"
+# Scheme / workspace / project / team / bundle id are agent-discoverable when a
+# checkout exists. We only require the starter app repo; everything else is
+# resolved below the same way an agent would (xcodebuild -list, project scan).
 REPO_DIR="${APP_REPO_DIR:-$HOME/work/app}"
 SCHEME="${APP_XCODE_SCHEME:-}"
 HAVE_APP=false
-if [[ -z "$SCHEME" ]]; then
-  fail "APP_XCODE_SCHEME not set in credentials.env — cannot run build proof"; FAIL=$((FAIL+1))
-elif [[ -d "$REPO_DIR/.git" ]]; then
+if [[ -d "$REPO_DIR/.git" ]]; then
   ok "app repo: $REPO_DIR"; PASS=$((PASS+1))
   HAVE_APP=true
 elif [[ -n "${APP_REPO_URL:-}" ]]; then
@@ -81,12 +83,52 @@ else
 fi
 
 if $HAVE_APP; then
-  # Container args: workspace beats project
+  # Container: prefer credentials, else discover workspace/project in the repo.
   CONTAINER=()
   if [[ -n "${APP_XCODE_WORKSPACE:-}" ]]; then
     CONTAINER=(-workspace "$REPO_DIR/${APP_XCODE_WORKSPACE}")
   elif [[ -n "${APP_XCODE_PROJECT:-}" ]]; then
     CONTAINER=(-project "$REPO_DIR/${APP_XCODE_PROJECT}")
+  else
+    WS=$(find "$REPO_DIR" -maxdepth 3 -name '*.xcworkspace' ! -path '*/Pods/*' ! -path '*/.swiftpm/*' | head -1)
+    if [[ -n "$WS" ]]; then
+      CONTAINER=(-workspace "$WS")
+      ok "discovered workspace: ${WS#"$REPO_DIR"/}"; PASS=$((PASS+1))
+    else
+      PROJ=$(find "$REPO_DIR" -maxdepth 3 -name '*.xcodeproj' ! -path '*/Pods/*' | head -1)
+      if [[ -n "$PROJ" ]]; then
+        CONTAINER=(-project "$PROJ")
+        ok "discovered project: ${PROJ#"$REPO_DIR"/}"; PASS=$((PASS+1))
+      else
+        fail "no .xcworkspace/.xcodeproj under $REPO_DIR"; FAIL=$((FAIL+1))
+        HAVE_APP=false
+      fi
+    fi
+  fi
+fi
+
+if $HAVE_APP; then
+  if [[ -z "$SCHEME" ]]; then
+    SCHEME=$(xcodebuild "${CONTAINER[@]}" -list 2>/dev/null \
+      | awk '/^[ \t]*Schemes:/{f=1; next} f && NF{gsub(/^[ \t]+/,""); print; exit}')
+    if [[ -n "$SCHEME" ]]; then
+      ok "discovered scheme: $SCHEME"; PASS=$((PASS+1))
+    else
+      fail "could not discover an Xcode scheme (set APP_XCODE_SCHEME or fix the project)"; FAIL=$((FAIL+1))
+      HAVE_APP=false
+    fi
+  fi
+fi
+
+if $HAVE_APP; then
+  # Team ID: credentials → DEVELOPMENT_TEAM baked into the project → leave empty
+  # (cloud signing + project settings often suffice).
+  TEAM="${APPLE_TEAM_ID:-}"
+  if [[ -z "$TEAM" ]]; then
+    TEAM=$(find "$REPO_DIR" \( -name '*.pbxproj' -o -name '*.xcconfig' \) -print0 2>/dev/null \
+      | xargs -0 grep -h -m1 -E 'DEVELOPMENT_TEAM[[:space:]]*=[[:space:]]*[A-Z0-9]+' 2>/dev/null \
+      | head -1 | grep -oE '[A-Z0-9]{10}' | head -1 || true)
+    [[ -n "$TEAM" ]] && { ok "discovered DEVELOPMENT_TEAM: $TEAM"; PASS=$((PASS+1)); }
   fi
 
   DERIVED="$HOME/work/verify-derived"
@@ -114,30 +156,44 @@ if $HAVE_APP; then
   if [[ -z "${APPLE_CERT_P12:-}" ]]; then
     SIGN_ARGS="-allowProvisioningUpdates -authenticationKeyPath $ASC_P8 -authenticationKeyID ${ASC_KEY_ID:-} -authenticationKeyIssuerID ${ASC_ISSUER_ID:-}"
   fi
+  TEAM_ARG=""
+  [[ -n "$TEAM" ]] && TEAM_ARG="DEVELOPMENT_TEAM=$TEAM"
 
   ARCHIVE="$HOME/work/verify.xcarchive"
   v "xcodebuild: archive (signed)" \
     bash -c "security unlock-keychain -p \"\$FB_KEYCHAIN_PASSWORD\" founderbench.keychain-db && \
       xcodebuild ${CONTAINER[*]} -scheme '$SCHEME' -destination 'generic/platform=iOS' \
-        -archivePath '$ARCHIVE' archive DEVELOPMENT_TEAM='${APPLE_TEAM_ID:-}' $SIGN_ARGS"
+        -archivePath '$ARCHIVE' archive $TEAM_ARG $SIGN_ARGS"
 
   if ! $SKIP_UPLOAD; then
-    v "asc: TestFlight upload (throwaway build)" \
-      bash -c '
-        EXPORT_DIR="$HOME/work/verify-export"
-        rm -rf "$EXPORT_DIR" && mkdir -p "$EXPORT_DIR"
-        cat > /tmp/fb-export-options.plist <<PLIST
+    BUNDLE="${APP_BUNDLE_ID:-}"
+    if [[ -z "$BUNDLE" ]]; then
+      BUNDLE=$(asc apps list --limit 1 --output json 2>/dev/null \
+        | jq -r '.[0].attributes.bundleId // .data[0].attributes.bundleId // empty' 2>/dev/null || true)
+      [[ -n "$BUNDLE" ]] && { ok "discovered bundle id: $BUNDLE"; PASS=$((PASS+1)); }
+    fi
+    if [[ -z "$BUNDLE" ]]; then
+      warn "APP_BUNDLE_ID unset and asc apps list empty — skipping TestFlight upload"
+    else
+      TEAM_PLIST_KEY=""
+      [[ -n "$TEAM" ]] && TEAM_PLIST_KEY="
+  <key>teamID</key><string>$TEAM</string>"
+      v "asc: TestFlight upload (throwaway build)" \
+        bash -c '
+          EXPORT_DIR="$HOME/work/verify-export"
+          rm -rf "$EXPORT_DIR" && mkdir -p "$EXPORT_DIR"
+          cat > /tmp/fb-export-options.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>method</key><string>app-store-connect</string>
-  <key>teamID</key><string>'"${APPLE_TEAM_ID:-}"'</string>
+  <key>method</key><string>app-store-connect</string>'"$TEAM_PLIST_KEY"'
 </dict></plist>
 PLIST
-        xcodebuild -exportArchive -archivePath "$HOME/work/verify.xcarchive" \
-          -exportOptionsPath /tmp/fb-export-options.plist -exportPath "$EXPORT_DIR" '"$SIGN_ARGS"' &&
-        IPA=$(ls "$EXPORT_DIR"/*.ipa | head -1) &&
-        asc builds upload --app "$APP_BUNDLE_ID" --ipa "$IPA"'
+          xcodebuild -exportArchive -archivePath "$HOME/work/verify.xcarchive" \
+            -exportOptionsPath /tmp/fb-export-options.plist -exportPath "$EXPORT_DIR" '"$SIGN_ARGS"' &&
+          IPA=$(ls "$EXPORT_DIR"/*.ipa | head -1) &&
+          asc builds upload --app "'"$BUNDLE"'" --ipa "$IPA"'
+    fi
   else
     warn "TestFlight upload skipped (--skip-upload)"
   fi
