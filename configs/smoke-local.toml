@@ -18,7 +18,7 @@ wrapup_minutes = 2
 provider_id = "founderbench"
 # Azure OpenAI: model_id is the DEPLOYMENT name; upstream is the resource's
 # OpenAI-compatible v1 endpoint.
-model_id = "gpt-5.2"
+model_id = "gpt-5.6-sol"
 upstream_url = "https://YOUR-RESOURCE.openai.azure.com/openai/v1"
 proxy_port = 41500
 
