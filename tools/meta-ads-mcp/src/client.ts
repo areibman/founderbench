@@ -121,55 +121,20 @@ export class MetaGraphClient {
     }
   }
 
-  private enforceBudget(
-    value: unknown,
-    cap: number | undefined,
-    field: "daily_budget" | "lifetime_budget",
-    capName: "META_MAX_DAILY_BUDGET_MINOR" | "META_MAX_LIFETIME_BUDGET_MINOR",
-  ): void {
+  /** Validate budget fields as minor-currency integers. Amounts are unconstrained
+   * here — Meta account spend caps are the blast-radius control. */
+  assertBudgetMinor(value: unknown, field: "daily_budget" | "lifetime_budget"): void {
     if (value === undefined || value === null) return;
     const budget = Number(value);
     if (!Number.isSafeInteger(budget) || budget < 0) {
       throw new Error(`${field} must be a non-negative integer in the account's minor unit`);
     }
-    if (cap === undefined) {
-      throw new Error(`${capName} is not configured; refusing ${field} mutation`);
-    }
-    if (budget > cap) {
-      throw new Error(`${field} ${budget} exceeds ${capName}=${cap}`);
-    }
-  }
-
-  enforceDailyBudget(value: unknown): void {
-    this.enforceBudget(
-      value,
-      this.config.maxDailyBudgetMinor,
-      "daily_budget",
-      "META_MAX_DAILY_BUDGET_MINOR",
-    );
-  }
-
-  enforceLifetimeBudget(value: unknown): void {
-    this.enforceBudget(
-      value,
-      this.config.maxLifetimeBudgetMinor,
-      "lifetime_budget",
-      "META_MAX_LIFETIME_BUDGET_MINOR",
-    );
   }
 
   assertActivationAllowed(status: unknown): void {
     if (typeof status !== "string" || status.trim().toUpperCase() !== "ACTIVE") return;
     if (!this.config.allowActivation) {
       throw new Error("META_ALLOW_ACTIVATION=true is required before setting status ACTIVE");
-    }
-    if (
-      this.config.maxDailyBudgetMinor === undefined ||
-      this.config.maxLifetimeBudgetMinor === undefined
-    ) {
-      throw new Error(
-        "META_MAX_DAILY_BUDGET_MINOR and META_MAX_LIFETIME_BUDGET_MINOR are both required before setting status ACTIVE",
-      );
     }
   }
 

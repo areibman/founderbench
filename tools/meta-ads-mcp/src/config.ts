@@ -55,15 +55,6 @@ function commaSeparated(value: string | undefined): Set<string> {
   );
 }
 
-function optionalPositiveInteger(value: string | undefined, name: string): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive integer`);
-  }
-  return parsed;
-}
-
 function explicitTrue(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";
 }
@@ -75,8 +66,6 @@ export interface MetaRuntimeConfig {
   allowActivation: boolean;
   businessId?: string;
   graphApiVersion: string;
-  maxDailyBudgetMinor?: number;
-  maxLifetimeBudgetMinor?: number;
   pageIds: Set<string>;
 }
 
@@ -95,14 +84,6 @@ export function loadMetaRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Met
     allowActivation: explicitTrue(env.META_ALLOW_ACTIVATION),
     businessId: env.META_BUSINESS_ID?.trim() || undefined,
     graphApiVersion,
-    maxDailyBudgetMinor: optionalPositiveInteger(
-      env.META_MAX_DAILY_BUDGET_MINOR,
-      "META_MAX_DAILY_BUDGET_MINOR",
-    ),
-    maxLifetimeBudgetMinor: optionalPositiveInteger(
-      env.META_MAX_LIFETIME_BUDGET_MINOR,
-      "META_MAX_LIFETIME_BUDGET_MINOR",
-    ),
     pageIds: commaSeparated(env.META_PAGE_IDS),
   };
 }

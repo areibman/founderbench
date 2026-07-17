@@ -85,7 +85,7 @@ with snapshot/restore — never a shared login.
 | 4.9 | Fastmail account + JMAP token | `curl api.fastmail.com/jmap/session` |
 | 4.10 | Fastmail MCP OAuth at "send" level | `opencode mcp auth list` shows `fastmail` |
 | 4.11 | Exa API key | curl search ping |
-| 4.12 | Spending caps set AT THE ACCOUNT LEVEL (meow, Meta, Apple) and Meta daily/lifetime local ceilings configured before activation | screenshot each account cap into `docs/`; check `meta_ads.get_mcp_status` |
+| 4.12 | Spending caps set AT THE ACCOUNT LEVEL (meow, Meta, Apple); Meta activation gated by `META_ALLOW_ACTIVATION` | screenshot each account cap into `docs/`; check `meta_ads.get_mcp_status` |
 
 ## 5. End-to-end proof (all non-interactive; any dialog = failure)
 

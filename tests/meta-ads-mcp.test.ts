@@ -58,20 +58,18 @@ test("loaded runtime pins the official Graph origin", () => {
   assert.equal("graphBaseUrl" in loaded, false);
 });
 
-test("Graph client enforces account, Page, and both budget allowlists", () => {
-  const client = new MetaGraphClient(
-    config({ maxDailyBudgetMinor: 5000, maxLifetimeBudgetMinor: 50_000 }),
-  );
+test("Graph client enforces account and Page allowlists", () => {
+  const client = new MetaGraphClient(config());
   assert.equal(client.accountId(), "act_123456");
   assert.throws(() => client.accountId("act_999999"), /outside the configured/);
-  assert.doesNotThrow(() => client.enforceDailyBudget(5000));
-  assert.throws(() => client.enforceDailyBudget(5001), /exceeds/);
-  assert.doesNotThrow(() => client.enforceLifetimeBudget(50_000));
-  assert.throws(() => client.enforceLifetimeBudget(50_001), /exceeds/);
+  assert.doesNotThrow(() => client.assertBudgetMinor(5000, "daily_budget"));
+  assert.doesNotThrow(() => client.assertBudgetMinor(50_000, "lifetime_budget"));
+  assert.throws(() => client.assertBudgetMinor(-1, "daily_budget"), /non-negative integer/);
+  assert.throws(() => client.assertBudgetMinor(1.5, "lifetime_budget"), /non-negative integer/);
   assert.throws(() => client.assertPageAllowed("112233"), /outside META_PAGE_IDS/);
 });
 
-test("writes, budget changes, creative Pages, and activation fail closed", () => {
+test("writes, creative Pages, and activation fail closed", () => {
   const unscoped = new MetaGraphClient(config({ accountId: undefined }));
   assert.throws(
     () => unscoped.writeAccountId("act_123456"),
@@ -81,26 +79,10 @@ test("writes, budget changes, creative Pages, and activation fail closed", () =>
   const noPages = new MetaGraphClient(config({ pageIds: new Set() }));
   assert.throws(() => noPages.assertPageAllowed("998877"), /META_PAGE_IDS is not configured/);
 
-  const noCaps = new MetaGraphClient(config());
-  assert.throws(() => noCaps.enforceDailyBudget(100), /is not configured/);
-  assert.throws(() => noCaps.enforceLifetimeBudget(1000), /is not configured/);
-  assert.throws(() => noCaps.assertActivationAllowed("ACTIVE"), /META_ALLOW_ACTIVATION=true/);
+  const pausedOnly = new MetaGraphClient(config());
+  assert.throws(() => pausedOnly.assertActivationAllowed("ACTIVE"), /META_ALLOW_ACTIVATION=true/);
 
-  const activationWithoutBothCaps = new MetaGraphClient(
-    config({ allowActivation: true, maxDailyBudgetMinor: 5000 }),
-  );
-  assert.throws(
-    () => activationWithoutBothCaps.assertActivationAllowed("active"),
-    /both required/,
-  );
-
-  const activationReady = new MetaGraphClient(
-    config({
-      allowActivation: true,
-      maxDailyBudgetMinor: 5000,
-      maxLifetimeBudgetMinor: 50_000,
-    }),
-  );
+  const activationReady = new MetaGraphClient(config({ allowActivation: true }));
   assert.doesNotThrow(() => activationReady.assertActivationAllowed(" ACTIVE "));
 });
 
@@ -174,11 +156,7 @@ test("MCP lists direct tools and forces new campaigns to PAUSED", async () => {
 
 test("MCP status proves direct local provenance without exposing secrets", async () => {
   const { server } = createMetaAdsServer(
-    config({
-      allowActivation: true,
-      maxDailyBudgetMinor: 5000,
-      maxLifetimeBudgetMinor: 50_000,
-    }),
+    config({ allowActivation: true }),
     (() => {
       throw new Error("status must not access the network");
     }) as typeof fetch,

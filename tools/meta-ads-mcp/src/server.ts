@@ -151,8 +151,6 @@ export function createMetaAdsServer(
           ad_account_allowlist: Boolean(config.accountId),
           page_allowlist: config.pageIds.size > 0,
           page_allowlist_count: config.pageIds.size,
-          daily_budget_ceiling: config.maxDailyBudgetMinor !== undefined,
-          lifetime_budget_ceiling: config.maxLifetimeBudgetMinor !== undefined,
           activation_opt_in: config.allowActivation,
         },
         ready: {
@@ -162,11 +160,7 @@ export function createMetaAdsServer(
             config.accessToken && config.accountId && config.pageIds.size > 0,
           ),
           activation: Boolean(
-            config.accessToken &&
-              config.accountId &&
-              config.allowActivation &&
-              config.maxDailyBudgetMinor !== undefined &&
-              config.maxLifetimeBudgetMinor !== undefined
+            config.accessToken && config.accountId && config.allowActivation,
           ),
         },
       })),
@@ -555,8 +549,8 @@ export function createMetaAdsServer(
       run(() => {
         const account = client.writeAccountId(account_id);
         const safeExtra = sanitizeChanges(extra ?? {});
-        client.enforceDailyBudget(safeExtra.daily_budget);
-        client.enforceLifetimeBudget(safeExtra.lifetime_budget);
+        client.assertBudgetMinor(safeExtra.daily_budget, "daily_budget");
+        client.assertBudgetMinor(safeExtra.lifetime_budget, "lifetime_budget");
         return client.post(`${account}/campaigns`, {
           ...safeExtra,
           name,
@@ -605,8 +599,8 @@ export function createMetaAdsServer(
       run(async () => {
         const account = client.writeAccountId(account_id);
         await client.assertObjectOwned(campaign_id, account);
-        client.enforceDailyBudget(daily_budget);
-        client.enforceLifetimeBudget(lifetime_budget);
+        client.assertBudgetMinor(daily_budget, "daily_budget");
+        client.assertBudgetMinor(lifetime_budget, "lifetime_budget");
         return client.post(`${account}/adsets`, {
           ...sanitizeChanges(extra ?? {}),
           billing_event,
@@ -737,8 +731,8 @@ export function createMetaAdsServer(
           const changes = sanitizeChanges(args.changes);
           await client.assertObjectOwned(objectId, account);
           client.assertActivationAllowed(changes.status);
-          client.enforceDailyBudget(changes.daily_budget);
-          client.enforceLifetimeBudget(changes.lifetime_budget);
+          client.assertBudgetMinor(changes.daily_budget, "daily_budget");
+          client.assertBudgetMinor(changes.lifetime_budget, "lifetime_budget");
           if (typeof changes.creative_id === "string") {
             await client.assertObjectOwned(changes.creative_id, account);
             changes.creative = { creative_id: changes.creative_id };
