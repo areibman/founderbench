@@ -91,7 +91,7 @@ with snapshot/restore — never a shared login.
 
 | # | Item | Verify with |
 |---|------|-------------|
-| 5.1 | Clone app repo | `gh repo clone` |
+| 5.1 | App checkout at `APP_REPO_DIR` | `test -d "$APP_REPO_DIR/.git"` |
 | 5.2 | Build for simulator | `xcodebuild build` |
 | 5.3 | Tests on simulator | `xcodebuild test` |
 | 5.4 | Simulator boots + screenshot | `simctl boot` + `simctl io screenshot` |

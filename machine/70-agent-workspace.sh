@@ -15,8 +15,11 @@ TARGET="${1:-${APP_REPO_DIR:-}}"
 [[ -n "$TARGET" ]] || die "usage: 70-agent-workspace.sh /path/to/app-repo (or set APP_REPO_DIR)"
 
 if [[ ! -d "$TARGET/.git" ]]; then
+  if [[ -z "${APP_REPO_URL:-}" ]]; then
+    die "no git checkout at $TARGET — put the app there, or set APP_REPO_URL to populate it"
+  fi
   log "Cloning app repo into $TARGET"
-  git clone "${APP_REPO_URL:?APP_REPO_URL not set}" "$TARGET"
+  git clone "$APP_REPO_URL" "$TARGET"
 fi
 
 SRC="$FB_ROOT/configs/agent"

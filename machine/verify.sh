@@ -61,16 +61,21 @@ bash ./60-credentials.sh >/dev/null 2>&1 && { ok "60-credentials.sh passes"; PAS
 log "══ 5. End-to-end app build proof ══"
 REPO_DIR="${APP_REPO_DIR:-$HOME/work/app}"
 SCHEME="${APP_XCODE_SCHEME:-}"
+HAVE_APP=false
 if [[ -z "$SCHEME" ]]; then
   fail "APP_XCODE_SCHEME not set in credentials.env — cannot run build proof"; FAIL=$((FAIL+1))
+elif [[ -d "$REPO_DIR/.git" ]]; then
+  ok "app repo: $REPO_DIR"; PASS=$((PASS+1))
+  HAVE_APP=true
+elif [[ -n "${APP_REPO_URL:-}" ]]; then
+  v "app repo: clone" git clone "$APP_REPO_URL" "$REPO_DIR"
+  HAVE_APP=true
 else
-  # Clone or update
-  if [[ -d "$REPO_DIR/.git" ]]; then
-    v "app repo: fetch" git -C "$REPO_DIR" fetch --quiet
-  else
-    v "app repo: clone" git clone "${APP_REPO_URL:?APP_REPO_URL not set}" "$REPO_DIR"
-  fi
+  fail "no git checkout at $REPO_DIR — set APP_REPO_DIR to an existing app, or APP_REPO_URL to populate it"
+  FAIL=$((FAIL+1))
+fi
 
+if $HAVE_APP; then
   # Container args: workspace beats project
   CONTAINER=()
   if [[ -n "${APP_XCODE_WORKSPACE:-}" ]]; then
