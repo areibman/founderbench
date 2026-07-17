@@ -47,13 +47,29 @@ Use MCP only as a fallback when the remote server is already configured or a CLI
 
 ## Authentication
 
-If the user needs to log in directly:
+An API key is already provisioned in the `MEOW_API_TOKEN` environment variable.
+Every command takes it via `--api-key`:
 
-Run `meow login --email you@company.com` to receive a verification code by email.
+```bash
+meow get-my-entity --api-key "$MEOW_API_TOKEN"
+meow list-bank-accounts --api-key "$MEOW_API_TOKEN"
+meow get-account-balances --account-id <id> --api-key "$MEOW_API_TOKEN"
+```
 
-Run `meow verify --email you@company.com --code 123456`.
+Keys expire after about 7 days. If the key is rejected (401), issue a new one
+yourself via the email flow — the account email is your own mailbox:
+
+```bash
+meow login --email <your email>        # sends a 6-digit code to your inbox
+meow issue-onboarding-key --email <your email> --verification-code <code>
+# export the returned api_key as MEOW_API_TOKEN and update credentials.env
+```
 
 No passwords are used — identity is confirmed via email verification codes.
+
+A second credential may be present in `MEOW_REST_API_KEY`: a key for meow's
+REST customer API (`https://api.meow.com/v1`, sent as an `x-api-key` header).
+Same account, independent auth path.
 
 ## Action Rules
 

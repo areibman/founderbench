@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stage 65: one-time OAuth for remote MCPs (Fastmail and meow bank).
+# Stage 65: one-time OAuth for remote MCPs (Fastmail).
+# Banking does NOT use MCP OAuth: the agent uses the meow CLI with MEOW_API_TOKEN.
 # Run as the agent user, INTERACTIVELY, on the Mac (needs a browser once).
 # After this stage, no run should ever hit a login prompt.
 #
@@ -23,7 +24,7 @@ cd "$WORKSPACE" || die "workspace not found: $WORKSPACE"
 log "MCP servers configured:"
 opencode mcp list || warn "opencode mcp list failed — is opencode.json present in $WORKSPACE?"
 
-for server in fastmail bank; do
+for server in fastmail; do
   echo
   log "Authorizing MCP: $server (browser will open — complete the OAuth consent)"
   if opencode mcp auth "$server"; then

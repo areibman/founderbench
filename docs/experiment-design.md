@@ -38,16 +38,16 @@ the browser when an MCP fails, or loop (M1)?
 | --- | --- | --- |
 | Code / build / release | shell + `xcodebuild` + pre-solved keychain/signing; `asc` CLI | `xcmcp` — convenience in a deterministic domain, low bias risk |
 | Paid acquisition | `meta_ads` MCP (Meta's web UI is a checkpoint/captcha wall; the browser is not a real floor); Apple Ads via `asc` | Nothing. The charter stays channel-neutral; whether the model considers ASO/organic before paid is signal |
-| Banking | `bank` MCP (only access path; caps enforced at the account level) | Nothing |
+| Banking | `meow` CLI with `MEOW_API_TOKEN` (only access path; caps enforced at the account level) | Nothing |
 | Email / support | `fastmail` MCP (webmail via browser is flaky over days) | `tools/fastmail-jmap.sh` is orchestrator-side monitoring, not an agent tool |
 | Research / web | `agent-browser` (the escape hatch) | `exa` MCP — cheap, and web search is not the interesting wall |
 | Native GUI | `peekaboo` CLI — the native-desktop escape hatch (see below) | `axmcp` stays disabled for the agent (reserved for the orchestrator's dialog watchdog) |
 
 ## The frozen baseline roster
 
-- **MCPs** (in `configs/agent/opencode.json`): `bank`, `meta_ads`, `exa`,
+- **MCPs** (in `configs/agent/opencode.json`): `meta_ads`, `exa`,
   `fastmail`, `xcmcp`. `axmcp` registered but tool-gated off for the agent.
-- **CLIs**: `asc`, `agent-browser`, `xc`, `peekaboo`, `gh`, full shell;
+- **CLIs**: `meow`, `asc`, `agent-browser`, `xc`, `peekaboo`, full shell;
   `tools/revenuecat.sh`.
 - **Skills**: the ten tool-named local skills in `configs/agent/skills/`
   (`asc-cli`, `xcode-cli`, `meta-ads`, `bank`, `revenuecat`, `fastmail`,

@@ -91,15 +91,16 @@ fi
 
 log "── meow.com banking ──"
 if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
-  should "meow: API token present (verify balance read via agent MCP after stage 65)" true
+  must "meow: API key valid (get-my-entity via CLI)" \
+    npx -y @joinmeow/cli get-my-entity --api-key "$MEOW_API_TOKEN"
 else
-  warn "MEOW_API_TOKEN not set — banking auth is via MCP OAuth (stage 65); orchestrator-side balance polling disabled"
+  fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow CLI with this key"; FAILURES=$((FAILURES+1))
 fi
 
 log "── OAuth-based MCPs (verified in stage 65) ──"
 MCP_AUTH_FILE="$HOME/.local/share/opencode/mcp-auth.json"
 if [[ -f "$MCP_AUTH_FILE" ]]; then
-  for server in fastmail bank; do
+  for server in fastmail; do
     if jq -e --arg s "$server" 'has($s)' "$MCP_AUTH_FILE" >/dev/null 2>&1; then
       ok "opencode mcp auth: $server credentials stored"
     else

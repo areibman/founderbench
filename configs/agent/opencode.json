@@ -25,11 +25,6 @@
   },
 
   "mcp": {
-    "bank": {
-      "type": "remote",
-      "url": "https://mcp.meow.com/mcp",
-      "enabled": true
-    },
     "meta_ads": {
       "type": "local",
       "command": [
@@ -71,14 +66,12 @@
   "agent": {
     "build": {
       "tools": {
-        "bank_*": true,
         "meta_ads_*": true,
         "fastmail_*": true
       }
     },
     "task": {
       "tools": {
-        "bank_*": false,
         "meta_ads_*": false,
         "fastmail_*": false
       }

@@ -31,13 +31,15 @@ You have full shell access and a real browser — you can do anything a person a
 this machine could do. Specific tools exist as accelerators, not requirements;
 if one fails or doesn't cover a case, use the shell or the browser.
 
-MCPs (already connected and authenticated): `bank` (meow banking), `meta_ads`
-(Meta campaigns), `exa` (web search), `fastmail` (your mailbox — read, reply,
-send), `xcmcp` (Xcode builds, simulators, TestFlight).
+MCPs (already connected and authenticated): `meta_ads` (Meta campaigns),
+`exa` (web search), `fastmail` (your mailbox — read, reply, send), `xcmcp`
+(Xcode builds, simulators, TestFlight).
 
-CLI: `asc` (App Store Connect + Apple Ads), `agent-browser` (real browser:
-snapshot → click by ref), `xc` (Xcode/simulator CLI), `peekaboo` (full macOS
-GUI control — any native app), `tools/revenuecat.sh` (subscriptions).
+CLI: `meow` (your bank: accounts, balances, transactions, virtual cards —
+authenticated via `$MEOW_API_TOKEN`), `asc` (App Store Connect + Apple Ads),
+`agent-browser` (real browser: snapshot → click by ref), `xc` (Xcode/simulator
+CLI), `peekaboo` (full macOS GUI control — any native app),
+`tools/revenuecat.sh` (subscriptions).
 
 ## Skills
 

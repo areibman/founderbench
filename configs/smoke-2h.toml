@@ -54,7 +54,7 @@ Work through this checklist, verifying each item and recording results in SMOKE_
 3. Boot a simulator, launch the app, take a screenshot.
 4. Check App Store Connect: current live version, latest reviews (asc CLI).
 5. Check RevenueCat overview (tools/revenuecat.sh overview).
-6. Check the bank balance (bank MCP) — read only.
+6. Check the bank balance (meow CLI, see the bank skill) — read only.
 7. Check Meta ad account status (meta_ads MCP) — read only, do not create anything.
 8. Read the support inbox (fastmail MCP) — reply only if something urgent is waiting.
 9. Do one small web research task (exa): list the top 3 competitors.

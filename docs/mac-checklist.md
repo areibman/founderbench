@@ -79,13 +79,13 @@ with snapshot/restore — never a shared login.
 | 4.3 | Distribution cert (.p12) imported | checklist 3.7 |
 | 4.4 | Provisioning profiles installed (or ASC-managed) | `ls ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/` |
 | 4.5 | Model API key (Azure OpenAI) | curl chat-completion round trip |
-| 4.7 | Direct Meta Ads token + allowlists | `machine/60-credentials.sh` reads the configured account; `meta_ads.get_mcp_status` reports local stdio/direct Graph provenance and readiness without secrets |
-| 4.8 | RevenueCat secret key | `curl api.revenuecat.com/v2/projects/<id>` |
-| 4.9 | meow bank MCP OAuth | `opencode mcp auth list` shows `bank`; balance read via agent |
-| 4.10 | Fastmail account + JMAP token | `curl api.fastmail.com/jmap/session` |
-| 4.11 | Fastmail MCP OAuth at "send" level | `opencode mcp auth list` shows `fastmail` |
-| 4.12 | Exa API key | curl search ping |
-| 4.13 | Spending caps set AT THE ACCOUNT LEVEL (meow, Meta, Apple) and Meta daily/lifetime local ceilings configured before activation | screenshot each account cap into `docs/`; check `meta_ads.get_mcp_status` |
+| 4.6 | Direct Meta Ads token + allowlists | `machine/60-credentials.sh` reads the configured account; `meta_ads.get_mcp_status` reports local stdio/direct Graph provenance and readiness without secrets |
+| 4.7 | RevenueCat secret key | `curl api.revenuecat.com/v2/projects/<id>` |
+| 4.8 | meow bank API key (CLI-issued via email flow; MFA on account; expires ~7 days — re-issue before long runs) | `npx @joinmeow/cli get-my-entity --api-key $MEOW_API_TOKEN` |
+| 4.9 | Fastmail account + JMAP token | `curl api.fastmail.com/jmap/session` |
+| 4.10 | Fastmail MCP OAuth at "send" level | `opencode mcp auth list` shows `fastmail` |
+| 4.11 | Exa API key | curl search ping |
+| 4.12 | Spending caps set AT THE ACCOUNT LEVEL (meow, Meta, Apple) and Meta daily/lifetime local ceilings configured before activation | screenshot each account cap into `docs/`; check `meta_ads.get_mcp_status` |
 
 ## 5. End-to-end proof (all non-interactive; any dialog = failure)
 

@@ -8,7 +8,6 @@ structure demands it.
 
 | Name | URL | Auth | Purpose |
 | --- | --- | --- | --- |
-| `bank` | meow.com remote MCP | OAuth (`opencode mcp auth bank`, stage 65) | balances, transactions, payments. Setup doc: https://www.meow.com/skills.md |
 | `meta_ads` | local `tools/meta-ads-mcp.sh` | `META_ACCESS_TOKEN` | Direct official Meta campaigns/creatives/budgets/insights |
 | `exa` | `https://mcp.exa.ai/mcp` | `EXA_API_KEY` header | web search + fetch |
 | `fastmail` | `https://api.fastmail.com/mcp` | OAuth at **send** level (stage 65) | the agent's mailbox: read/reply/send + calendar + contacts |
@@ -27,6 +26,7 @@ and lifetime local budget ceilings.
 
 | CLI | Install (stage 30) | Skill | Purpose |
 | --- | --- | --- | --- |
+| `meow` | `npm install -g @joinmeow/cli` | bank | meow banking: entities, accounts, balances, transactions, invoices, **virtual cards** (`--api-key $MEOW_API_TOKEN` on every command; same backend as meow's `/cli` MCP surface) |
 | `asc` | `brew install asc` + `asc install-skills` | vendor skills (23) | App Store Connect: publish, TestFlight, metadata, reviews, sales, screenshots, **Apple Ads** |
 | `agent-browser` | `brew install agent-browser` | vendor skill | authenticated browser automation (snapshot/ref workflow) |
 | `xc` | `go install github.com/tmc/axmcp/cmd/xc@latest` | xcode-cli | CLI twin of xcmcp |
