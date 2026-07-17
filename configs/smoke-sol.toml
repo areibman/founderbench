@@ -14,12 +14,6 @@ name = "smoke-sol"
 duration_hours = 0.15          # ~9 minutes
 wrapup_minutes = 2
 
-[model]
-provider_id = "founderbench"
-model_id = "gpt-5.6-sol"
-upstream_url = "https://api.openai.com/v1"
-proxy_port = 41500
-
 [workspace]
 dir = "/tmp/fb-sol-smoke"
 

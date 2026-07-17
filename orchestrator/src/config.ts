@@ -16,11 +16,13 @@ export interface RunConfig {
     /** Bounded window given to the final wrap-up prompt (default 10). */
     wrapup_minutes?: number;
   };
+  /** Always derived — credentials.env + harness defaults. Not in the run TOML. */
   model: {
-    provider_id: string; // opencode provider id, e.g. "founderbench"
-    model_id: string; // Azure OpenAI: the deployment name, e.g. "gpt-5.6-sol"
-    upstream_url: string;
+    /** OpenCode provider id; matches configs/agent/opencode.json. */
+    provider_id: string;
     proxy_port: number;
+    model_id: string;
+    upstream_url: string;
   };
   workspace: {
     /** Agent cwd. Prefer "~" / $HOME — do not point at a specific app repo;
@@ -106,11 +108,26 @@ export function loadRunConfig(path: string): RunConfig {
   // Neutral default: home. Never require a directed app-repo path.
   const home = process.env.HOME ?? "~";
   if (!cfg.workspace?.dir) {
-    cfg.workspace = { ...(cfg.workspace ?? {}), dir: home };
+    cfg.workspace = { ...(cfg.workspace ?? { dir: home }), dir: home };
   } else {
     cfg.workspace.dir = cfg.workspace.dir
       .replace(/^\$HOME(?=\/|$)/, home)
       .replace(/^~(?=\/|$)/, home);
+  }
+  // Model is never TOML: credentials + fixed harness defaults (provider name /
+  // proxy port match opencode.json). Optional MODEL_PROXY_PORT override.
+  const proxyPort = Number(process.env.MODEL_PROXY_PORT ?? "41500");
+  cfg.model = {
+    provider_id: "founderbench",
+    proxy_port: Number.isFinite(proxyPort) && proxyPort > 0 ? proxyPort : 41500,
+    model_id: process.env.MODEL_ID ?? "",
+    upstream_url: process.env.MODEL_UPSTREAM_URL ?? "",
+  };
+  if (!cfg.model.model_id) {
+    throw new Error("MODEL_ID missing — set it in credentials.env");
+  }
+  if (!cfg.model.upstream_url) {
+    throw new Error("MODEL_UPSTREAM_URL missing — set it in credentials.env");
   }
   return cfg;
 }

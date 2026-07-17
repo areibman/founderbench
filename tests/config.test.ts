@@ -1,14 +1,20 @@
-import { test } from "node:test";
+import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { loadRunConfig, FB_ROOT } from "../orchestrator/src/config.ts";
+
+before(() => {
+  process.env.MODEL_ID ??= "gpt-5.6-sol";
+  process.env.MODEL_UPSTREAM_URL ??= "https://example.openai.azure.com/openai/v1";
+});
 
 for (const file of ["smoke-2h.toml", "pilot-24h.toml"]) {
   test(`run config ${file} loads and has required fields`, () => {
     const cfg = loadRunConfig(join(FB_ROOT, "configs", file));
     assert.ok(cfg.run.name);
     assert.ok(cfg.run.duration_hours > 0);
-    assert.ok(cfg.model.upstream_url.startsWith("https://"));
+    assert.equal(cfg.model.model_id, process.env.MODEL_ID);
+    assert.equal(cfg.model.upstream_url, process.env.MODEL_UPSTREAM_URL);
     assert.ok(cfg.model.proxy_port > 1024);
     assert.ok(cfg.opencode.port > 1024);
     assert.notEqual(cfg.model.proxy_port, cfg.opencode.port);
@@ -25,4 +31,17 @@ test("workspace dir expands home", () => {
   assert.ok(cfg.workspace.dir.length > 1);
   assert.notEqual(cfg.workspace.dir, "~");
   assert.ok(!cfg.workspace.dir.includes("$HOME"));
+});
+
+test("missing MODEL_ID throws", () => {
+  const saved = process.env.MODEL_ID;
+  delete process.env.MODEL_ID;
+  try {
+    assert.throws(
+      () => loadRunConfig(join(FB_ROOT, "configs", "smoke-2h.toml")),
+      /MODEL_ID missing/,
+    );
+  } finally {
+    process.env.MODEL_ID = saved;
+  }
 });
