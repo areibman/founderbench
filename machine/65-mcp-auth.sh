@@ -39,4 +39,4 @@ log "Verifying auth status:"
 opencode mcp auth list 2>/dev/null || opencode mcp list
 
 log "Stage 65 complete. Reminder: for Fastmail choose the 'send' access level."
-log "Meta Ads uses META_ACCESS_TOKEN directly and does not use MCP OAuth."
+log "Meta Ads is shell → Graph API (META_ACCESS_TOKEN); no MCP OAuth."

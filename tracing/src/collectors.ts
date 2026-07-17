@@ -8,7 +8,7 @@
  * machine/70-agent-workspace.sh (writes directly to trace.jsonl via $FB_TRACE_DIR).
  */
 import { execFile } from "node:child_process";
-import { watch } from "node:fs";
+import { watch, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { TraceStore } from "./trace.ts";
 
@@ -188,6 +188,135 @@ export class FsWatchCollector {
     } else {
       this.trace.emit("env.fs", "fswatch", payload);
     }
+  }
+}
+
+/**
+ * Git shadow collector: a second, harness-owned git history of the workspace,
+ * committed after every agent action — the `git log --follow`-able record of
+ * the whole run, independent of whether (and how) the agent chooses to commit.
+ *
+ * Uses a separate GIT_DIR with the workspace as work-tree (the dotfiles
+ * pattern), so the agent's own .git — its index, hooks, and history — is never
+ * touched, and the shadow repo is invisible to the agent's `git status`.
+ * Snapshots are triggered by tool-completion events (debounced) plus a
+ * periodic fallback, and each commit is emitted as an env.gitshadow trace
+ * event carrying the sha, trigger, and diffstat.
+ */
+export class GitShadowCollector {
+  private timer: NodeJS.Timeout | null = null;
+  private debounce: NodeJS.Timeout | null = null;
+  private busy = false;
+  private rerun: string | null = null;
+
+  constructor(
+    private readonly trace: TraceStore,
+    /** Work-tree to track (typically the agent workspace / app repo). */
+    private readonly workTree: string,
+    /** Shadow GIT_DIR — must NOT be inside the work-tree's own .git. */
+    private readonly gitDir: string,
+    /** gitignore-syntax patterns written to the shadow repo's info/exclude. */
+    private readonly exclude: string[],
+    private readonly intervalMs: number,
+    private readonly debounceMs: number,
+  ) {}
+
+  async start(): Promise<void> {
+    try {
+      // HEAD, not the directory, is the init marker — a half-created dir from
+      // a previous failed init must not short-circuit into a broken repo.
+      if (!existsSync(join(this.gitDir, "HEAD"))) {
+        mkdirSync(this.gitDir, { recursive: true });
+        // Plain `git init --bare <dir>`: init rejects --work-tree, so this one
+        // call bypasses the flag-injecting helper below.
+        await new Promise<void>((resolve, reject) => {
+          execFile("git", ["init", "--bare", this.gitDir], { timeout: 60_000 }, (err, _o, stderr) =>
+            err ? reject(new Error(`git init: ${stderr || err}`)) : resolve(),
+          );
+        });
+        await this.git(["config", "core.bare", "false"]);
+        await this.git(["config", "core.worktree", this.workTree]);
+        await this.git(["config", "user.name", "founderbench-shadow"]);
+        await this.git(["config", "user.email", "shadow@founderbench.local"]);
+        await this.git(["config", "commit.gpgsign", "false"]);
+      }
+      // Always ignore the agent's own .git plus the configured exclude list.
+      mkdirSync(join(this.gitDir, "info"), { recursive: true });
+      writeFileSync(
+        join(this.gitDir, "info", "exclude"),
+        [".git/", ...this.exclude].join("\n") + "\n",
+      );
+    } catch (err) {
+      this.trace.emit("env.error", "gitshadow", {
+        message: `shadow repo init failed: ${String(err)}`,
+      });
+      return;
+    }
+    this.timer = setInterval(() => void this.snapshot("interval"), this.intervalMs);
+    this.trace.emit("harness.event", "gitshadow", {
+      type: "collector.started",
+      workTree: this.workTree,
+      gitDir: this.gitDir,
+      exclude: this.exclude,
+    });
+    await this.snapshot("run-start");
+  }
+
+  async stop(): Promise<void> {
+    if (this.timer) clearInterval(this.timer);
+    if (this.debounce) clearTimeout(this.debounce);
+    await this.snapshot("run-end");
+  }
+
+  /** Called on agent activity (tool completions); debounced into one snapshot. */
+  notify(trigger: string): void {
+    if (this.debounce) clearTimeout(this.debounce);
+    this.debounce = setTimeout(() => void this.snapshot(trigger), this.debounceMs);
+  }
+
+  /** Stage everything and commit if anything changed. Serialized: one git at a time. */
+  async snapshot(trigger: string): Promise<void> {
+    if (this.busy) {
+      this.rerun = trigger; // coalesce: latest trigger wins
+      return;
+    }
+    this.busy = true;
+    try {
+      await this.git(["add", "-A"]);
+      const status = await this.git(["status", "--porcelain"]);
+      if (status.trim().length > 0) {
+        await this.git(["commit", "-q", "-m", `shadow: ${trigger}`]);
+        const sha = (await this.git(["rev-parse", "HEAD"])).trim();
+        const stat = (await this.git(["show", "--stat", "--format=", "HEAD"])).trim();
+        this.trace.emit("env.gitshadow", "gitshadow", {
+          sha,
+          trigger,
+          stat: stat.slice(-500),
+        });
+      }
+    } catch (err) {
+      this.trace.emit("env.error", "gitshadow", {
+        message: `snapshot failed (${trigger}): ${String(err)}`,
+      });
+    } finally {
+      this.busy = false;
+      if (this.rerun) {
+        const next = this.rerun;
+        this.rerun = null;
+        void this.snapshot(next);
+      }
+    }
+  }
+
+  private git(args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      execFile(
+        "git",
+        ["--git-dir", this.gitDir, "--work-tree", this.workTree, ...args],
+        { cwd: this.workTree, timeout: 60_000, maxBuffer: 16 * 1024 * 1024 },
+        (err, stdout, stderr) => (err ? reject(new Error(`git ${args[0]}: ${stderr || err}`)) : resolve(stdout)),
+      );
+    });
   }
 }
 

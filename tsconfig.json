@@ -17,7 +17,6 @@
   },
   "include": [
     "orchestrator/src/**/*.ts",
-    "tools/meta-ads-mcp/src/**/*.ts",
     "tracing/src/**/*.ts",
     "tests/**/*.ts"
   ]

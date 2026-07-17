@@ -38,6 +38,22 @@ max_business_spend_usd = 200      # ALSO capped at the account level (meow + Met
 [metrics]
 interval_minutes = 30
 
+# Git shadow: a second, harness-owned git history of the workspace. Every agent
+# tool action triggers a debounced auto-commit into a separate GIT_DIR (default:
+# runs/<run-id>/shadow.git), so `git --git-dir=<shadow> log --follow -p <file>`
+# replays every change of the run — regardless of how the agent uses its own git.
+[gitshadow]
+enabled = true
+interval_seconds = 300
+debounce_seconds = 5
+exclude = [
+  "node_modules/",
+  "Pods/",
+  ".build/",
+  "DerivedData/",
+  "*.xcuserstate",
+]
+
 # Whole-filesystem change record: every path the agent (or anything else)
 # touches under ~ lands in the trace as env.fs events. Excludes are declared
 # here so they are recorded in run.start — churn dirs only, never agent output.

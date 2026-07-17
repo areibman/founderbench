@@ -16,7 +16,12 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { TraceStore } from "../../tracing/src/trace.ts";
 import { InterceptionProxy } from "../../tracing/src/proxy.ts";
-import { SseCollector, ScreenshotCollector, FsWatchCollector } from "../../tracing/src/collectors.ts";
+import {
+  SseCollector,
+  ScreenshotCollector,
+  FsWatchCollector,
+  GitShadowCollector,
+} from "../../tracing/src/collectors.ts";
 import { loadRunConfig, loadCredentialsEnv, FB_ROOT, type RunConfig } from "./config.ts";
 import { OpenCodeServer } from "./opencode.ts";
 import { capabilityPreflight } from "./preflight.ts";
@@ -62,6 +67,7 @@ class Orchestrator {
   private readonly sse: SseCollector;
   private readonly screenshots: ScreenshotCollector;
   private readonly fswatch: FsWatchCollector | null;
+  private readonly gitshadow: GitShadowCollector | null;
   private readonly watchdog: DialogWatchdog;
   private readonly budget: BudgetMonitor;
   private readonly metrics: MetricsCollector;
@@ -103,6 +109,19 @@ class Orchestrator {
           cfg.fswatch.path.replace(/^~(?=\/|$)/, process.env.HOME ?? "~"),
           cfg.fswatch.exclude,
           (cfg.fswatch.flush_seconds ?? 15) * 1000,
+        )
+      : null;
+    this.gitshadow = cfg.gitshadow?.enabled
+      ? new GitShadowCollector(
+          this.trace,
+          cfg.workspace.dir,
+          (cfg.gitshadow.git_dir ?? join(this.trace.runDir, "shadow.git")).replace(
+            /^~(?=\/|$)/,
+            process.env.HOME ?? "~",
+          ),
+          cfg.gitshadow.exclude ?? [],
+          (cfg.gitshadow.interval_seconds ?? 300) * 1000,
+          (cfg.gitshadow.debounce_seconds ?? 5) * 1000,
         )
       : null;
     this.watchdog = new DialogWatchdog(
@@ -156,6 +175,7 @@ class Orchestrator {
     this.watchdog.start();
     this.metrics.start();
     this.fswatch?.start();
+    await this.gitshadow?.start();
 
     // Create or resume the session.
     if (this.sessionId) {
@@ -316,6 +336,7 @@ class Orchestrator {
     this.screenshots.stop();
     this.metrics.stop();
     this.fswatch?.stop();
+    if (this.gitshadow) await this.gitshadow.stop().catch(() => {});
     await this.opencode.stop();
     await this.proxy.stop();
     // Marker file tells the launchd wrapper not to restart us.
@@ -347,6 +368,19 @@ class Orchestrator {
     // Busy/idle is driven only by explicit session status events. Message events
     // are NOT used: opencode emits message.updated after idle (summary attachment),
     // which would wedge us in "busy" forever.
+    // Shadow-git snapshot on agent actions: every tool event and every
+    // end-of-turn, debounced inside the collector into one commit per burst.
+    // Tool activity arrives either as a "*tool*" bus type or as a message part
+    // with part.type === "tool" — cover both.
+    if (this.gitshadow) {
+      const part = (properties as { part?: { type?: string; tool?: string } } | undefined)?.part;
+      if (type.includes("tool") || part?.type === "tool") {
+        this.gitshadow.notify(part?.tool ? `tool ${part.tool}` : type);
+      } else if (type === "session.idle") {
+        this.gitshadow.notify("session.idle");
+      }
+    }
+
     if (type === "session.idle" || type === "session.error") {
       this.busy = false;
     } else if (type === "session.status") {

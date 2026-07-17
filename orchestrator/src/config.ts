@@ -63,6 +63,22 @@ export interface RunConfig {
     /** Shell commands run on each snapshot; stdout captured into the trace. */
     commands: Record<string, string>;
   };
+  /** Git shadow: a harness-owned second git history of the workspace,
+   * auto-committed after every agent tool action (debounced) plus a periodic
+   * fallback. Separate GIT_DIR — the agent's own .git is never touched, and
+   * `git log --follow` on the shadow repo replays every change of the run. */
+  gitshadow?: {
+    enabled: boolean;
+    /** Shadow GIT_DIR; "~" expands. Must NOT live inside the work-tree's .git.
+     * Default: <runs>/<run-id>/shadow.git (per-run history). */
+    git_dir?: string;
+    /** gitignore-syntax patterns to exclude from snapshots (build churn). */
+    exclude?: string[];
+    /** Periodic fallback snapshot interval (default 300). */
+    interval_seconds?: number;
+    /** Quiet window after a tool event before committing (default 5). */
+    debounce_seconds?: number;
+  };
   /** Filesystem watcher: records every path changed under `path` (recursive,
    * FSEvents) as env.fs trace events. Excludes are a declared, config-visible
    * filter (they appear in run.start) — not silent editorializing. */

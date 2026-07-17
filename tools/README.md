@@ -8,25 +8,19 @@ structure demands it.
 
 | Name | URL | Auth | Purpose |
 | --- | --- | --- | --- |
-| `meta_ads` | local `tools/meta-ads-mcp.sh` | `META_ACCESS_TOKEN` | Direct official Meta campaigns/creatives/budgets/insights |
 | `exa` | `https://mcp.exa.ai/mcp` | `EXA_API_KEY` header | web search + fetch |
 | `fastmail` | `https://api.fastmail.com/mcp` | OAuth at **send** level (stage 65) | the agent's mailbox: read/reply/send + calendar + contacts |
 | `xcmcp` | local binary | — | Xcode builds, tests, simulators, TestFlight (toolset-gated) |
 | `axmcp` | local binary | — | macOS AX automation; **gated off for the agent** (watchdog use) |
 
 MCP calls are traced via the OpenCode SSE `/event` stream (`harness.tool` events).
-The local Meta Ads MCP sends requests directly to `graph.facebook.com`; no hosted
-Meta Ads MCP provider receives credentials or traffic. Call `get_mcp_status` to
-verify that provenance and local readiness without revealing credentials. All
-writes require a configured ad-account allowlist; creative writes additionally
-require a Page allowlist. ACTIVE updates require an explicit opt-in
-(`META_ALLOW_ACTIVATION`).
 
-## CLIs (invoked via shell; load the matching skill first)
+## CLIs / HTTP APIs (invoked via shell; load the matching skill first)
 
-| CLI | Install (stage 30) | Skill | Purpose |
+| Surface | Install / auth | Skill | Purpose |
 | --- | --- | --- | --- |
-| `meow` | `npm install -g @joinmeow/cli` | bank | meow banking: entities, accounts, balances, transactions, invoices, **virtual cards** (`--api-key $MEOW_API_TOKEN` on every command; same backend as meow's `/cli` MCP surface) |
+| `meow` | `npm install -g @joinmeow/cli` | bank | meow banking: entities, accounts, balances, transactions, invoices, **virtual cards** (`--api-key $MEOW_API_TOKEN` on every command) |
+| Meta Graph / Marketing API | `$META_ACCESS_TOKEN` + `$META_AD_ACCOUNT_ID` | meta-ads | campaigns, creatives, budgets, insights via `curl` to `graph.facebook.com` |
 | `asc` | `brew install asc` + `asc install-skills` | vendor skills (23) | App Store Connect: publish, TestFlight, metadata, reviews, sales, screenshots, **Apple Ads** |
 | `agent-browser` | `brew install agent-browser` | vendor skill | authenticated browser automation (snapshot/ref workflow) |
 | `xc` | `go install github.com/tmc/axmcp/cmd/xc@latest` | xcode-cli | CLI twin of xcmcp |
@@ -50,8 +44,7 @@ Every important action must land in the run trace:
 ## Blast-radius rules (account level — the real containment)
 
 - meow account: spending limit configured in-dashboard; card limits per merchant.
-- Meta ad account: account-level spending cap (the real blast-radius control);
-  `META_ALLOW_ACTIVATION` gates going live.
+- Meta ad account: account-level spending cap.
 - Apple: dedicated developer team; app-scoped ASC API key.
 - GitHub: no credentials provisioned — git is local-only; if the agent wants a
   hosted remote it must create its own account.
