@@ -47,7 +47,12 @@ v "a simulator device exists"          bash -c 'xcrun simctl list devices availa
 log "══ 3. Permissions (the zero-dialog gates) ══"
 v "build keychain exists"              bash -c '[[ -f "$HOME/Library/Keychains/founderbench.keychain-db" ]]'
 v "build keychain unlockable"          bash -c 'security show-keychain-info founderbench.keychain-db 2>&1 | grep -q "no-timeout\|timeout"'
-v "codesign identity valid"            bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -qv "0 valid"'
+if [[ -n "${APPLE_CERT_P12:-}" ]]; then
+  v "codesign identity valid (p12 mode)" bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -qv "0 valid"'
+else
+  v "cloud signing ready (no p12: ASC p8 + team id)" \
+    bash -c '[[ -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -f "${ASC_PRIVATE_KEY_PATH/#\~/$HOME}" ]]'
+fi
 v "screencapture works (Screen Recording TCC)" bash -c 'screencapture -x /tmp/fb-verify-screen.png && [[ -s /tmp/fb-verify-screen.png ]]'
 v "AX API reachable (Accessibility TCC)" bash -c 'AXBIN=$(command -v ax || echo $HOME/go/bin/ax); "$AXBIN" apps 2>/dev/null | head -1 | grep -q .'
 v "osascript System Events (AppleEvents TCC)" osascript -e 'tell application "System Events" to count processes'
@@ -100,11 +105,21 @@ if $HAVE_APP; then
     xcrun simctl bootstatus "$UDID" -b >/dev/null 2>&1 || xcrun simctl boot "$UDID" 2>/dev/null || true
     xcrun simctl io "$UDID" screenshot /tmp/fb-verify-sim.png && [[ -s /tmp/fb-verify-sim.png ]]'
 
+  # Signing args: cloud mode (no p12) signs through the ASC API key — profiles
+  # and the cloud-managed distribution cert are created/fetched by xcodebuild.
+  # NOTE: spliced unquoted into bash -c strings below — safe because the p8
+  # path and key ids contain no spaces (enforced shape, see credentials.env).
+  ASC_P8="${ASC_PRIVATE_KEY_PATH/#\~/$HOME}"
+  SIGN_ARGS=""
+  if [[ -z "${APPLE_CERT_P12:-}" ]]; then
+    SIGN_ARGS="-allowProvisioningUpdates -authenticationKeyPath $ASC_P8 -authenticationKeyID ${ASC_KEY_ID:-} -authenticationKeyIssuerID ${ASC_ISSUER_ID:-}"
+  fi
+
   ARCHIVE="$HOME/work/verify.xcarchive"
   v "xcodebuild: archive (signed)" \
     bash -c "security unlock-keychain -p \"\$FB_KEYCHAIN_PASSWORD\" founderbench.keychain-db && \
       xcodebuild ${CONTAINER[*]} -scheme '$SCHEME' -destination 'generic/platform=iOS' \
-        -archivePath '$ARCHIVE' archive DEVELOPMENT_TEAM='${APPLE_TEAM_ID:-}'"
+        -archivePath '$ARCHIVE' archive DEVELOPMENT_TEAM='${APPLE_TEAM_ID:-}' $SIGN_ARGS"
 
   if ! $SKIP_UPLOAD; then
     v "asc: TestFlight upload (throwaway build)" \
@@ -120,7 +135,7 @@ if $HAVE_APP; then
 </dict></plist>
 PLIST
         xcodebuild -exportArchive -archivePath "$HOME/work/verify.xcarchive" \
-          -exportOptionsPath /tmp/fb-export-options.plist -exportPath "$EXPORT_DIR" &&
+          -exportOptionsPath /tmp/fb-export-options.plist -exportPath "$EXPORT_DIR" '"$SIGN_ARGS"' &&
         IPA=$(ls "$EXPORT_DIR"/*.ipa | head -1) &&
         asc builds upload --app "$APP_BUNDLE_ID" --ipa "$IPA"'
   else

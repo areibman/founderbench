@@ -34,8 +34,20 @@ else
 fi
 
 log "── Signing ──"
-must "codesigning identity present in build keychain" \
-  bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -q "valid identities found" && ! security find-identity -v -p codesigning founderbench.keychain-db | grep -q "0 valid"'
+# Two supported modes:
+#   p12 mode   — APPLE_CERT_P12 set: a distribution identity must live in the
+#                build keychain (imported by stage 50).
+#   cloud mode — no p12: xcodebuild signs via the ASC API key
+#                (-allowProvisioningUpdates -authenticationKey*). Requires an
+#                Admin-role key. Prerequisites are checked here; the live proof
+#                is verify.sh's signed archive.
+if [[ -n "${APPLE_CERT_P12:-}" ]]; then
+  must "codesigning identity present in build keychain (p12 mode)" \
+    bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -q "valid identities found" && ! security find-identity -v -p codesigning founderbench.keychain-db | grep -q "0 valid"'
+else
+  must "cloud signing prerequisites (no p12: ASC key + APPLE_TEAM_ID)" \
+    bash -c '[[ -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -f "${ASC_PRIVATE_KEY_PATH/#\~/$HOME}" ]]'
+fi
 
 log "── Model provider ──"
 if [[ -n "${MODEL_API_KEY:-}" && -n "${MODEL_UPSTREAM_URL:-}" && -n "${MODEL_ID:-}" ]]; then

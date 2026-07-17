@@ -63,7 +63,7 @@ if [[ -n "${APPLE_CERT_P12:-}" && -f "${APPLE_CERT_P12:-}" ]]; then
   log "Verifying signing identity"
   security find-identity -v -p codesigning "$KEYCHAIN" || warn "no valid codesigning identity found"
 else
-  warn "APPLE_CERT_P12 not set/found — import the distribution cert later and re-run this stage"
+  warn "APPLE_CERT_P12 not set/found — cloud signing mode: xcodebuild will sign via the ASC API key (-allowProvisioningUpdates; requires Admin-role key). To use a local identity instead, set APPLE_CERT_P12 and re-run this stage."
 fi
 
 if [[ -n "${PROVISIONING_PROFILES_DIR:-}" && -d "${PROVISIONING_PROFILES_DIR:-}" ]]; then
