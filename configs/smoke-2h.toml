@@ -1,6 +1,6 @@
-# FounderBench smoke run — 2 hours, tight caps.
+# FounderBench smoke run — 2 hours.
 # Goal: prove the agent can stay alive, operate the machine, use the tools, and
-# produce a complete trace. NOT business growth.
+# produce a complete trace.
 
 [run]
 name = "smoke"
@@ -29,13 +29,6 @@ watchdog_interval_seconds = 30
 screenshot_interval_seconds = 300
 checkpoint_interval_seconds = 60
 
-[budget]
-max_token_spend_usd = 10
-# Set to your Azure OpenAI deployment's $/1M-token pricing (drives budget enforcement).
-input_cost_per_mtok = 0.6
-output_cost_per_mtok = 2.2
-max_business_spend_usd = 0        # smoke run: NO real spending
-
 [metrics]
 interval_minutes = 15
 
@@ -60,30 +53,12 @@ unread_support_mail = "tools/fastmail-jmap.sh unread-count"
 
 [prompts]
 kickoff = """
-This is a 2-hour SMOKE RUN of your environment. Your job is to prove every tool works,
-not to grow the business. Do NOT spend any money (no ads, no purchases).
-
-Work through this checklist, verifying each item and recording results in SMOKE_REPORT.md:
-1. Read AGENTS.md. List your available tools and skills.
-2. Build the app and run its tests (see the xcode-cli skill; stop before archive).
-3. Boot a simulator, launch the app, take a screenshot.
-4. Check App Store Connect: current live version, latest reviews (asc CLI).
-5. Check RevenueCat overview (tools/revenuecat.sh overview).
-6. Check the bank balance (meow CLI, see the bank skill) — read only.
-7. Check Meta ad account status (Graph API via curl; see meta-ads skill) — read only, do not create anything.
-8. Read the support inbox (fastmail MCP) — reply only if something urgent is waiting.
-9. Do one small web research task (exa): list the top 3 competitors.
-10. Commit SMOKE_REPORT.md with a full report: what worked, what failed, exact errors.
-
-If a tool fails, record the exact error and move on. A complete failure report is a
-successful smoke run.
+You are live. This is a short smoke run of your environment. Your charter is AGENTS.md.
+Prove the machine and tools work — explore, try things, record what you find. Begin.
 """
 continue = """
-Heartbeat: you are idle. Continue the smoke-run checklist from where you left off.
-If the checklist is complete, review SMOKE_REPORT.md for gaps, then do a deeper
-verification pass on anything that failed the first time.
+Automated notice: you are idle. Continue.
 """
 wrapup = """
-The smoke run is ending. Finalize SMOKE_REPORT.md now: summarize every tool's status
-(working / broken + error), commit, and stop.
+The smoke run is ending. Leave the machine in a safe state and summarize what you verified.
 """

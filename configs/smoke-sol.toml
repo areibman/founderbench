@@ -1,8 +1,7 @@
 # FounderBench local smoke — GPT-5.6 Sol over the OpenAI Responses API.
 # Goal: prove the full capture pipeline against the production model/dialect:
 # proxy passthrough of /v1/responses, usage extraction (input_tokens naming),
-# raw SSE side files (reasoning items + tool-call events), budget enforcement,
-# and the vf.Trace export.
+# raw SSE side files (reasoning items + tool-call events), and the vf.Trace export.
 #
 # Usage:
 #   export MODEL_API_KEY=<funded OpenAI API key>
@@ -34,12 +33,6 @@ max_nudges_before_restart = 2
 watchdog_interval_seconds = 3600     # needs mini TCC grants; disabled locally
 screenshot_interval_seconds = 3600
 checkpoint_interval_seconds = 60
-
-[budget]
-max_token_spend_usd = 5              # Sol is pricey; cap the experiment
-input_cost_per_mtok = 5.0            # gpt-5.6-sol GA pricing
-output_cost_per_mtok = 30.0
-max_business_spend_usd = 0
 
 [metrics]
 interval_minutes = 3

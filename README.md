@@ -68,8 +68,8 @@ orchestrator (launchd, KeepAlive)
   ├── SSE /event collector    → JSONL trace store (runs/<run-id>/trace.jsonl)
   ├── heartbeat state machine → nudge / restart / resume on stall or crash
   ├── dialog watchdog         → AX inspection + screenshots, evidence on any dialog
-  ├── budget enforcement      → token cap, business spend, wall-clock end time
-  └── metrics snapshots       → revenue/MRR/installs/balance on an interval
+  ├── wall-clock end          → run duration only (no spend caps / $ rates)
+  └── metrics snapshots       → usage, revenue/MRR/installs/balance on an interval
 ```
 
 ## Tool surface (agent-facing)

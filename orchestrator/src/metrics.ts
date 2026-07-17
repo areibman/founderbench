@@ -39,7 +39,6 @@ export class MetricsCollector {
     }
     this.trace.emit("metrics.snapshot", "metrics", {
       results, // verbatim — no truncation
-      tokenSpendUsd: this.budget.tokenSpendUsd(),
       businessSpendUsd: this.budget.businessSpendUsd,
     });
   }

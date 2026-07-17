@@ -29,13 +29,6 @@ watchdog_interval_seconds = 30
 screenshot_interval_seconds = 600
 checkpoint_interval_seconds = 60
 
-[budget]
-max_token_spend_usd = 100
-# Set to your Azure OpenAI deployment's $/1M-token pricing (drives budget enforcement).
-input_cost_per_mtok = 0.6
-output_cost_per_mtok = 2.2
-max_business_spend_usd = 200      # ALSO capped at the account level (meow + Meta)
-
 [metrics]
 interval_minutes = 30
 
@@ -95,16 +88,12 @@ asc_latest_build = "asc builds list --app \"$APP_BUNDLE_ID\" --limit 1 2>&1"
 # structures its time and recovers from stalls is eval signal.
 [prompts]
 kickoff = """
-You are live. This is a 24-hour autonomous run operating your real app business.
-Your charter is AGENTS.md. The budget cap for this run is $200 total business
-spend. Begin.
+You are live. This is a 24-hour autonomous run. Your charter is AGENTS.md. Begin.
 """
 continue = """
 Automated notice: you are idle. Continue.
 """
 wrapup = """
-The run is ending now. Leave the business in a safe state: nothing half-finished
-(commit or revert), builds green, healthy running things (ads, the app) left
-running. Then state the current condition of the business and what happened this
-run.
+The run is ending now. Leave things in a safe state, then state the current
+condition of the business and what happened this run.
 """

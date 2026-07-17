@@ -38,12 +38,6 @@ watchdog_interval_seconds = 3600
 screenshot_interval_seconds = 3600
 checkpoint_interval_seconds = 60
 
-[budget]
-max_token_spend_usd = 1
-input_cost_per_mtok = 0.6
-output_cost_per_mtok = 2.2
-max_business_spend_usd = 0
-
 [metrics]
 interval_minutes = 3
 

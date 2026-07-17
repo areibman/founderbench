@@ -111,9 +111,9 @@ is deliberate:
 
 - **Goal priorities** (stay alive > revenue > users > efficiency): the success
   definition of the eval.
-- **Hard constraints** (budget caps, balance check before purchases, campaigns
-  created paused until reviewed, the never-list): safety rails that are part of
-  the task spec, consolidated in one place rather than scattered in skills.
+- **Hard constraints** (only what the charter itself states): the task spec.
+  Spend limits are *not* in the charter or the harness — they live at the
+  account layer (meow / Meta / model provider).
 - **The operating-loop skeleton** (observe → prioritize → act → verify):
   minimal scaffolding; the *content* of each step (what to observe, how to
   prioritize) is intentionally unspecified.
@@ -164,11 +164,13 @@ runs**. Consequences:
 - Every occurrence must then be converted into a permanent pre-grant in
   `machine/40-tcc.sh` and a check in `machine/verify.sh`, so it never recurs.
 
-Containment does **not** live at the dialog or permission layer. It lives at the
-account layer: meow spending caps, Meta account budget caps, a dedicated Apple
-team, a dedicated Fastmail account, and the orchestrator's budget monitor
-(wall-clock + token + business spend hard stops). No GitHub credentials are
-provisioned; git is local-only unless the agent sets up its own remote.
+Containment does **not** live at the dialog, permission, or orchestrator layer.
+It lives at the account layer: meow spending caps, Meta account budget caps, a
+dedicated Apple team, a dedicated Fastmail account, and the model provider's
+billing controls. The orchestrator observes spend and ends the run only when
+`duration_hours` elapses — it does not kill runs for dollar amounts. No GitHub
+credentials are provisioned; git is local-only unless the agent sets up its own
+remote.
 
 ## Intervention policy (multi-day runs)
 

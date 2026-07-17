@@ -4,8 +4,8 @@
  * Owns the run lifecycle:
  *   start proxy → start opencode serve → create/resume session → kickoff prompt →
  *   continuous work loop (re-prompt on idle) → heartbeat (stall detect, nudge,
- *   restart) → dialog watchdog → budget + wall-clock enforcement → checkpoints →
- *   metrics snapshots → graceful end.
+ *   restart) → dialog watchdog → wall-clock end → checkpoints →
+ *   metrics snapshots → spend observation (no caps) → graceful end.
  *
  * Run under launchd with KeepAlive (machine/80-install-launchd.sh) so the daemon
  * itself is restarted on crash; on restart it resumes from the checkpoint.
@@ -129,7 +129,7 @@ class Orchestrator {
       this.screenshots,
       cfg.heartbeat.watchdog_interval_seconds * 1000,
     );
-    this.budget = new BudgetMonitor(cfg.budget, this.proxy, this.trace, this.endAt);
+    this.budget = new BudgetMonitor(this.proxy, this.trace, this.endAt);
     this.metrics = new MetricsCollector(
       cfg.metrics.commands,
       this.trace,
@@ -209,9 +209,9 @@ class Orchestrator {
     this.budget.maybeEmit();
     this.checkpoint();
 
-    // End-of-run enforcement (wall clock or budget breach).
+    // Sole harness end condition: wall-clock duration. No spend caps.
     const { status, reasons } = this.budget.status();
-    if (status === "breach") {
+    if (status === "time_up") {
       await this.endRun(reasons.join("; "));
       return;
     }
@@ -325,7 +325,6 @@ class Orchestrator {
       reason,
       restarts: this.restarts,
       usage: { ...this.proxy.usage },
-      tokenSpendUsd: this.budget.tokenSpendUsd(),
       businessSpendUsd: this.budget.businessSpendUsd,
       durationMs: Date.now() - this.startedAt,
     });

@@ -33,7 +33,7 @@ model failures are the eval signal.**
 | Code | Failure | Typical evidence |
 | --- | --- | --- |
 | M1 | Stall/loop: repeated the same failing action | tool events, no state change |
-| M2 | Ignored budget/charter constraints | `budget.breach`, spend without balance check |
+| M2 | Ignored charter constraints | spend without balance check, unsafe ops vs AGENTS.md |
 | M3 | Broke the build and didn't fix it | red tests at run end |
 | M4 | Hallucinated tool/API usage | tool errors from invented flags/endpoints |
 | M5 | Bad business judgment (large, unforced) | decision log + outcome metrics |

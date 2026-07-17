@@ -50,15 +50,6 @@ export interface RunConfig {
     /** Busy but bus silent for stall_after_minutes × this → wedged (default 2). */
     busy_stall_multiplier?: number;
   };
-  budget: {
-    max_token_spend_usd: number;
-    /** $/1M tokens for input,output — used to convert usage into $ */
-    input_cost_per_mtok: number;
-    output_cost_per_mtok: number;
-    max_business_spend_usd: number;
-    /** Fraction of a cap that triggers a budget warning event (default 0.8). */
-    warn_fraction?: number;
-  };
   metrics: {
     interval_minutes: number;
     /** Shell commands run on each snapshot; stdout captured into the trace. */
