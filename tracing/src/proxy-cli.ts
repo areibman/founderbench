@@ -3,7 +3,7 @@
  * orchestrator, or for pointing any OpenAI-compatible client at a traced upstream.
  *
  * Usage:
- *   MODEL_UPSTREAM_URL=https://api.z.ai/api/paas/v4 MODEL_API_KEY=... \
+ *   MODEL_UPSTREAM_URL=https://YOUR-RESOURCE.openai.azure.com/openai/v1 MODEL_API_KEY=... \
  *     npm run proxy -- --port 41500 --run-id proxy-test
  */
 import { InterceptionProxy } from "./proxy.ts";

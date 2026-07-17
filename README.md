@@ -64,7 +64,7 @@ founderbench/
 ```
 orchestrator (launchd, KeepAlive)
   ├── spawns `opencode serve` (headless harness)
-  ├── LLM interception proxy  → MiniMax/GLM upstream (every request/response traced)
+  ├── LLM interception proxy  → Azure OpenAI upstream (every request/response traced)
   ├── SSE /event collector    → JSONL trace store (runs/<run-id>/trace.jsonl)
   ├── heartbeat state machine → nudge / restart / resume on stall or crash
   ├── dialog watchdog         → AX inspection + screenshots, evidence on any dialog

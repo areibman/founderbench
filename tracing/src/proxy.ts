@@ -4,7 +4,7 @@
  * response (including streamed SSE bodies) before forwarding to the real upstream.
  *
  * Design: opaque HTTP passthrough. Works with any OpenAI-compatible upstream
- * (MiniMax, GLM/Zhipu, etc.). Streaming responses are teed: bytes flow to the client
+ * (Azure OpenAI, OpenAI, MiniMax, GLM/Zhipu, etc.). Streaming responses are teed: bytes flow to the client
  * unmodified while being accumulated in full for the trace.
  *
  * NO DATA LOSS: request and response bodies are persisted verbatim as side files
@@ -17,7 +17,7 @@ import { TraceStore } from "./trace.ts";
 
 export interface ProxyOptions {
   port: number;
-  upstreamUrl: string; // e.g. https://api.z.ai/api/paas/v4
+  upstreamUrl: string; // e.g. https://YOUR-RESOURCE.openai.azure.com/openai/v1
   /** If set, replaces the incoming Authorization header. */
   upstreamApiKey?: string;
   trace: TraceStore;
@@ -110,7 +110,14 @@ export class InterceptionProxy {
       if (["host", "connection", "content-length", "accept-encoding"].includes(k)) continue;
       headers[k] = v;
     }
-    if (this.opts.upstreamApiKey) headers["authorization"] = `Bearer ${this.opts.upstreamApiKey}`;
+    if (this.opts.upstreamApiKey) {
+      headers["authorization"] = `Bearer ${this.opts.upstreamApiKey}`;
+      // Azure OpenAI: the v1 endpoint accepts Bearer, but older api-version
+      // surfaces only take the api-key header — send both when targeting Azure.
+      if (new URL(url).hostname.endsWith(".azure.com")) {
+        headers["api-key"] = this.opts.upstreamApiKey;
+      }
+    }
 
     const upstreamRes = await fetch(url, {
       method: req.method ?? "POST",

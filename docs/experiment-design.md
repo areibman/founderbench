@@ -164,8 +164,9 @@ runs**. Consequences:
 
 Containment does **not** live at the dialog or permission layer. It lives at the
 account layer: meow spending caps, Meta account budget caps, a dedicated Apple
-team, repo-scoped GitHub credentials, a dedicated Fastmail account, and the
-orchestrator's budget monitor (wall-clock + token + business spend hard stops).
+team, a dedicated Fastmail account, and the orchestrator's budget monitor
+(wall-clock + token + business spend hard stops). No GitHub credentials are
+provisioned; git is local-only unless the agent sets up its own remote.
 
 ## Intervention policy (multi-day runs)
 

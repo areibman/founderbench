@@ -16,8 +16,7 @@ TARGET="${1:-${APP_REPO_DIR:-}}"
 
 if [[ ! -d "$TARGET/.git" ]]; then
   log "Cloning app repo into $TARGET"
-  require_cmd gh
-  GH_TOKEN="${GITHUB_TOKEN:-}" gh repo clone "${APP_REPO_URL:?APP_REPO_URL not set}" "$TARGET"
+  git clone "${APP_REPO_URL:?APP_REPO_URL not set}" "$TARGET"
 fi
 
 SRC="$FB_ROOT/configs/agent"

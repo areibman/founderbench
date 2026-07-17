@@ -78,8 +78,7 @@ with snapshot/restore — never a shared login.
 | 4.2 | Apple team id + bundle id recorded | `credentials.env` |
 | 4.3 | Distribution cert (.p12) imported | checklist 3.7 |
 | 4.4 | Provisioning profiles installed (or ASC-managed) | `ls ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/` |
-| 4.5 | GitHub fine-grained PAT (app repo only) | `GH_TOKEN=... gh repo view <slug>` |
-| 4.6 | Model API key (MiniMax/GLM) | curl chat-completion round trip |
+| 4.5 | Model API key (Azure OpenAI) | curl chat-completion round trip |
 | 4.7 | Direct Meta Ads token + allowlists | `machine/60-credentials.sh` reads the configured account; `meta_ads.get_mcp_status` reports local stdio/direct Graph provenance and readiness without secrets |
 | 4.8 | RevenueCat secret key | `curl api.revenuecat.com/v2/projects/<id>` |
 | 4.9 | meow bank MCP OAuth | `opencode mcp auth list` shows `bank`; balance read via agent |

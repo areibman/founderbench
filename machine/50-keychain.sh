@@ -91,6 +91,6 @@ if git config --global credential.helper 2>/dev/null | grep -q osxkeychain; then
   ok "removed git-credential-osxkeychain"
 fi
 git config --global credential.helper "" 2>/dev/null || true
-ok "git auth via gh/env, not keychain"
+ok "git: no credential helper — local-only by default, nothing stored in keychain"
 
 log "Stage 50 complete"

@@ -37,7 +37,7 @@ send), `xcmcp` (Xcode builds, simulators, TestFlight).
 
 CLI: `asc` (App Store Connect + Apple Ads), `agent-browser` (real browser:
 snapshot → click by ref), `xc` (Xcode/simulator CLI), `peekaboo` (full macOS
-GUI control — any native app), `gh`, `tools/revenuecat.sh` (subscriptions).
+GUI control — any native app), `tools/revenuecat.sh` (subscriptions).
 
 ## Skills
 

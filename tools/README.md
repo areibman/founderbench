@@ -32,7 +32,6 @@ and lifetime local budget ceilings.
 | `xc` | `go install github.com/tmc/axmcp/cmd/xc@latest` | xcode-cli | CLI twin of xcmcp |
 | `tools/revenuecat.sh` | this repo | revenuecat | MRR/churn/offerings/entitlements via REST v2 |
 | `tools/fastmail-jmap.sh` | this repo | — (orchestrator-side) | scripted inbox monitoring + credential verification |
-| `gh` | brew | — | issues, PRs, repo ops (fine-grained PAT, app repo only) |
 
 ## Tracing contract
 
@@ -54,5 +53,6 @@ Every important action must land in the run trace:
 - Meta ad account: account-level spending cap plus local daily/lifetime ceilings
   set before enabling activation.
 - Apple: dedicated developer team; app-scoped ASC API key.
-- GitHub: fine-grained PAT scoped to the single app repo.
+- GitHub: no credentials provisioned — git is local-only; if the agent wants a
+  hosted remote it must create its own account.
 - Fastmail: dedicated account; masked emails for third-party signups.

@@ -8,8 +8,10 @@ duration_hours = 24
 
 [model]
 provider_id = "founderbench"
-model_id = "glm-5.2"
-upstream_url = "https://api.z.ai/api/coding/paas/v4"
+# Azure OpenAI: model_id is the DEPLOYMENT name; upstream is the resource's
+# OpenAI-compatible v1 endpoint. Must match configs/agent/opencode.json.
+model_id = "gpt-5.2"
+upstream_url = "https://YOUR-RESOURCE.openai.azure.com/openai/v1"
 proxy_port = 41500
 
 [workspace]
@@ -28,6 +30,7 @@ checkpoint_interval_seconds = 60
 
 [budget]
 max_token_spend_usd = 100
+# Set to your Azure OpenAI deployment's $/1M-token pricing (drives budget enforcement).
 input_cost_per_mtok = 0.6
 output_cost_per_mtok = 2.2
 max_business_spend_usd = 200      # ALSO capped at the account level (meow + Meta)

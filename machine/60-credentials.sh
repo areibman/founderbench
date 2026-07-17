@@ -37,26 +37,18 @@ log "── Signing ──"
 must "codesigning identity present in build keychain" \
   bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -q "valid identities found" && ! security find-identity -v -p codesigning founderbench.keychain-db | grep -q "0 valid"'
 
-log "── GitHub ──"
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  must "gh: token valid (gh auth status)" env GH_TOKEN="$GITHUB_TOKEN" gh auth status
-  if [[ -n "${APP_REPO_URL:-}" ]]; then
-    repo_slug="$(sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##' <<<"$APP_REPO_URL")"
-    must "gh: can read app repo ($repo_slug)" env GH_TOKEN="$GITHUB_TOKEN" gh repo view "$repo_slug" --json name
-  fi
-else
-  fail "GITHUB_TOKEN not set"; FAILURES=$((FAILURES+1))
-fi
-
 log "── Model provider ──"
-if [[ -n "${MODEL_API_KEY:-}" && -n "${MODEL_UPSTREAM_URL:-}" ]]; then
-  must "model API: chat completion round-trip" \
+if [[ -n "${MODEL_API_KEY:-}" && -n "${MODEL_UPSTREAM_URL:-}" && -n "${MODEL_ID:-}" ]]; then
+  # Azure OpenAI v1 endpoint accepts Bearer; api-key is sent too so the check
+  # also passes on older Azure api-version surfaces. Harmless elsewhere.
+  must "model API: chat completion round-trip ($MODEL_ID)" \
     curl -sf --max-time 30 "$MODEL_UPSTREAM_URL/chat/completions" \
       -H "Authorization: Bearer $MODEL_API_KEY" \
+      -H "api-key: $MODEL_API_KEY" \
       -H "Content-Type: application/json" \
-      -d "{\"model\":\"${MODEL_ID:-glm-5.2}\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":4}"
+      -d "{\"model\":\"$MODEL_ID\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_completion_tokens\":16}"
 else
-  fail "MODEL_API_KEY/MODEL_UPSTREAM_URL not set"; FAILURES=$((FAILURES+1))
+  fail "MODEL_API_KEY/MODEL_UPSTREAM_URL/MODEL_ID not set"; FAILURES=$((FAILURES+1))
 fi
 
 log "── RevenueCat ──"

@@ -18,7 +18,7 @@ export interface RunConfig {
   };
   model: {
     provider_id: string; // opencode provider id, e.g. "founderbench"
-    model_id: string; // e.g. "glm-5.2"
+    model_id: string; // Azure OpenAI: the deployment name, e.g. "gpt-5.2"
     upstream_url: string;
     proxy_port: number;
   };

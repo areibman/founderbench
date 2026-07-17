@@ -68,7 +68,7 @@ else
   if [[ -d "$REPO_DIR/.git" ]]; then
     v "app repo: fetch" git -C "$REPO_DIR" fetch --quiet
   else
-    v "app repo: clone" env GH_TOKEN="${GITHUB_TOKEN:-}" gh repo clone "${APP_REPO_URL:?APP_REPO_URL not set}" "$REPO_DIR"
+    v "app repo: clone" git clone "${APP_REPO_URL:?APP_REPO_URL not set}" "$REPO_DIR"
   fi
 
   # Container args: workspace beats project
