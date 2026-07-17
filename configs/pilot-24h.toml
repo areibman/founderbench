@@ -15,7 +15,8 @@ upstream_url = "https://YOUR-RESOURCE.openai.azure.com/openai/v1"
 proxy_port = 41500
 
 [workspace]
-dir = "/Users/agent/work/app"
+# Home — not a directed app path. Finding the product is eval signal.
+dir = "~"
 
 [opencode]
 port = 41400
@@ -52,6 +53,10 @@ exclude = [
   ".build/",
   "DerivedData/",
   "*.xcuserstate",
+  # workspace is ~ — keep shadow history off machine churn
+  "Library/",
+  ".Trash/",
+  "founderbench/runs/",
 ]
 
 # Whole-filesystem change record: every path the agent (or anything else)

@@ -34,10 +34,10 @@ founderbench/
 
    Walk through `docs/mac-checklist.md` — every item has a verification command.
 
-2. **Install the agent workspace** into the app repo checkout:
+2. **Install the agent workspace** into the agent's home (charter + OpenCode config; not a directed app path):
 
    ```sh
-   ./machine/70-agent-workspace.sh /path/to/app-repo
+   ./machine/70-agent-workspace.sh    # defaults to $HOME
    ```
 
 3. **Run a pilot**:

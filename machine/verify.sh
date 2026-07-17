@@ -65,21 +65,38 @@ bash ./60-credentials.sh >/dev/null 2>&1 && { ok "60-credentials.sh passes"; PAS
   || { fail "60-credentials.sh FAILED — run it directly for details"; FAIL=$((FAIL+1)); }
 
 log "══ 5. End-to-end app build proof ══"
-# Scheme / workspace / project / team / bundle id are agent-discoverable when a
-# checkout exists. We only require the starter app repo; everything else is
-# resolved below the same way an agent would (xcodebuild -list, project scan).
-REPO_DIR="${APP_REPO_DIR:-$HOME/work/app}"
+# App location / scheme / team / bundle id are all agent-discoverable. We do not
+# require APP_REPO_DIR. If a checkout is obvious (credentials or a common path),
+# prove the build; otherwise skip — finding/using the app is eval signal.
 SCHEME="${APP_XCODE_SCHEME:-}"
 HAVE_APP=false
-if [[ -d "$REPO_DIR/.git" ]]; then
+REPO_DIR=""
+if [[ -n "${APP_REPO_DIR:-}" && -d "${APP_REPO_DIR}/.git" ]]; then
+  REPO_DIR="$APP_REPO_DIR"
+elif [[ -d "$HOME/work/app/.git" ]]; then
+  REPO_DIR="$HOME/work/app"
+else
+  # First git repo under ~/work that looks like an Xcode app.
+  CAND=$(find "$HOME/work" -maxdepth 3 -type d -name .git 2>/dev/null | while read -r g; do
+    root="$(dirname "$g")"
+    if find "$root" -maxdepth 3 \( -name '*.xcodeproj' -o -name '*.xcworkspace' \) 2>/dev/null | grep -q .; then
+      echo "$root"
+      break
+    fi
+  done)
+  [[ -n "$CAND" ]] && REPO_DIR="$CAND"
+fi
+
+if [[ -n "$REPO_DIR" ]]; then
   ok "app repo: $REPO_DIR"; PASS=$((PASS+1))
   HAVE_APP=true
 elif [[ -n "${APP_REPO_URL:-}" ]]; then
-  v "app repo: clone" git clone "$APP_REPO_URL" "$REPO_DIR"
+  REPO_DIR="${APP_REPO_DIR:-$HOME/work/app}"
+  # Optional bootstrap only — never hang on an interactive GitHub prompt.
+  v "app repo: clone" env GIT_TERMINAL_PROMPT=0 git clone "$APP_REPO_URL" "$REPO_DIR"
   HAVE_APP=true
 else
-  fail "no git checkout at $REPO_DIR — set APP_REPO_DIR to an existing app, or APP_REPO_URL to populate it"
-  FAIL=$((FAIL+1))
+  warn "no app checkout found — skipping build proof (agent will locate/use the app)"
 fi
 
 if $HAVE_APP; then

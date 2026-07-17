@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Stage 70: install the OpenCode agent workspace (config, charter, skills) into the
-# app repo checkout. Run as the agent user. Re-run any time templates change.
+# Stage 70: install the OpenCode agent workspace (config, charter, skills).
+# Default target is $HOME — not a directed app-repo path. Finding the product
+# is eval signal; we only drop the charter + tool config where the agent starts.
 #
-# Usage: ./70-agent-workspace.sh [/path/to/app-repo]   (defaults to $APP_REPO_DIR)
+# Usage: ./70-agent-workspace.sh [target-dir]   (defaults to $HOME)
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -11,20 +12,12 @@ source ./lib.sh
 require_not_root
 load_credentials
 
-TARGET="${1:-${APP_REPO_DIR:-}}"
-[[ -n "$TARGET" ]] || die "usage: 70-agent-workspace.sh /path/to/app-repo (or set APP_REPO_DIR)"
-
-if [[ ! -d "$TARGET/.git" ]]; then
-  if [[ -z "${APP_REPO_URL:-}" ]]; then
-    die "no git checkout at $TARGET — put the app there, or set APP_REPO_URL to populate it"
-  fi
-  log "Cloning app repo into $TARGET"
-  git clone "$APP_REPO_URL" "$TARGET"
-fi
+TARGET="${1:-${HOME}}"
+[[ -d "$TARGET" ]] || die "target directory does not exist: $TARGET"
 
 SRC="$FB_ROOT/configs/agent"
 
-log "Installing opencode.json"
+log "Installing opencode.json → $TARGET"
 cp "$SRC/opencode.json" "$TARGET/opencode.json"
 ok "opencode.json"
 
@@ -50,9 +43,10 @@ ok "tools → $FB_ROOT/tools"
 # file with instructions in it would contaminate that observation.
 # (docs/experiment-design.md, "deliberately uninstructed")
 
-log "Installing git hooks for trace collection"
-HOOK="$TARGET/.git/hooks/post-commit"
-cat > "$HOOK" <<EOF
+if [[ -d "$TARGET/.git" ]]; then
+  log "Installing git hooks for trace collection"
+  HOOK="$TARGET/.git/hooks/post-commit"
+  cat > "$HOOK" <<EOF
 #!/usr/bin/env bash
 # FounderBench trace hook: record every commit as a trace event.
 FB_TRACE_DIR="\${FB_TRACE_DIR:-}"
@@ -65,8 +59,11 @@ printf '{"ts":%s,"type":"git.commit","source":"git-hook","data":{"sha":"%s","mes
   "\$(printf '%s' "\$stat" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
   >> "\$FB_TRACE_DIR/trace.jsonl" 2>/dev/null || true
 EOF
-chmod +x "$HOOK"
-ok "post-commit hook installed"
+  chmod +x "$HOOK"
+  ok "post-commit hook installed"
+else
+  warn "no .git at $TARGET — skipping post-commit hook (shadow git still covers the run)"
+fi
 
 log "Stage 70 complete — workspace ready at $TARGET"
 log "Verify: cd $TARGET && opencode mcp list"

@@ -16,10 +16,10 @@ require_not_root
 require_cmd opencode
 load_credentials
 
-# OpenCode discovers MCP servers from the workspace config. Ensure the agent
-# workspace exists first (70-agent-workspace.sh), or run from configs/agent.
-WORKSPACE="${APP_REPO_DIR:-$FB_ROOT/configs/agent}"
-cd "$WORKSPACE" || die "workspace not found: $WORKSPACE"
+# OpenCode discovers MCP servers from the workspace config. Stage 70 installs
+# that into $HOME by default (not a directed app path).
+WORKSPACE="${1:-$HOME}"
+cd "$WORKSPACE" || die "workspace not found: $WORKSPACE (run 70-agent-workspace.sh first)"
 
 log "MCP servers configured:"
 opencode mcp list || warn "opencode mcp list failed — is opencode.json present in $WORKSPACE?"

@@ -24,8 +24,10 @@ So every affordance is classified as one of:
    Barriers here (OAuth, 2FA, captchas, codesign prompts) are not interesting
    failures; no model reasons its way through them, they just force intervention.
    We pre-solve all of them. This is the *intervention-free floor*.
-2. **Procedure** — anything that says what to do, in what order, at what cadence.
-   Deriving the operating strategy **is the eval**. We provide the minimum.
+2. **Procedure** — anything that says what to do, in what order, at what cadence
+   — including *which* product to operate, *where* the code lives, scheme names,
+   bundle ids, team ids. Deriving that **is the eval**. We provide the minimum:
+   credentials and machine access, not a directed map of the business.
 
 Structural rule: **the universal escape hatch** — shell + `agent-browser` — is
 always available, so no task is impossible-by-construction and specific tools are

@@ -23,7 +23,8 @@ export interface RunConfig {
     proxy_port: number;
   };
   workspace: {
-    /** App repo checkout — the agent's cwd. */
+    /** Agent cwd. Prefer "~" / $HOME — do not point at a specific app repo;
+     * finding the product is eval signal. "~" and $HOME are expanded at load. */
     dir: string;
   };
   opencode: {
@@ -110,7 +111,17 @@ export interface RunConfig {
 
 export function loadRunConfig(path: string): RunConfig {
   const raw = parseToml(readFileSync(path, "utf8"));
-  return raw as unknown as RunConfig;
+  const cfg = raw as unknown as RunConfig;
+  // Neutral default: home. Never require a directed app-repo path.
+  const home = process.env.HOME ?? "~";
+  if (!cfg.workspace?.dir) {
+    cfg.workspace = { ...(cfg.workspace ?? {}), dir: home };
+  } else {
+    cfg.workspace.dir = cfg.workspace.dir
+      .replace(/^\$HOME(?=\/|$)/, home)
+      .replace(/^~(?=\/|$)/, home);
+  }
+  return cfg;
 }
 
 /** Load credentials.env (simple KEY=VALUE / KEY="VALUE" lines) into process.env. */
