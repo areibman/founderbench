@@ -73,13 +73,14 @@ else
 fi
 
 log "── Meta Ads (direct Graph API) ──"
-if [[ -n "${META_ACCESS_TOKEN:-}" && -n "${META_AD_ACCOUNT_ID:-}" ]]; then
-  must "Meta Ads: configured ad account readable" \
+# Token only — ad account id is agent-discoverable via /me/adaccounts.
+if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
+  must "Meta Ads: token can list ad accounts" \
     curl -sf --max-time 20 \
-      "https://graph.facebook.com/${META_GRAPH_API_VERSION:-v25.0}/${META_AD_ACCOUNT_ID}?fields=id,name,account_status" \
+      "https://graph.facebook.com/${META_GRAPH_API_VERSION:-v25.0}/me/adaccounts?fields=id,name&limit=1" \
       -H "Authorization: Bearer $META_ACCESS_TOKEN"
 else
-  fail "META_ACCESS_TOKEN/META_AD_ACCOUNT_ID not set"; FAILURES=$((FAILURES+1))
+  fail "META_ACCESS_TOKEN not set"; FAILURES=$((FAILURES+1))
 fi
 
 log "── Fastmail (JMAP) ──"
