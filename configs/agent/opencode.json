@@ -25,15 +25,6 @@
   },
 
   "mcp": {
-    "meta_ads": {
-      "type": "local",
-      "command": [
-        "bash",
-        "-lc",
-        "exec \"$(git rev-parse --show-toplevel)/tools/meta-ads-mcp.sh\""
-      ],
-      "enabled": true
-    },
     "exa": {
       "type": "remote",
       "url": "https://mcp.exa.ai/mcp",
@@ -66,13 +57,11 @@
   "agent": {
     "build": {
       "tools": {
-        "meta_ads_*": true,
         "fastmail_*": true
       }
     },
     "task": {
       "tools": {
-        "meta_ads_*": false,
         "fastmail_*": false
       }
     }
