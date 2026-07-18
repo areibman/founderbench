@@ -15,36 +15,5 @@ TRACE="$FB_ROOT/runs/$RID/trace.jsonl"
 echo ">>> watching $RID (Ctrl+C stops watching, not the run)" >&2
 
 # -n +1: replay history first, then follow. -F survives file rotation.
-tail -n +1 -F "$TRACE" | jq -rj --unbuffered '
-  def C(code; s): "\u001b[" + code + "m" + s + "\u001b[0m";
-  if .type == "run.state" then
-    "\n" + C("1;35"; "── [" + (.data.state // "?") + "] ──") + "\n"
-  elif .type == "harness.message" and (.data.direction? == "inject") then
-    "\n\n" + C("1;33"; "╭─ PROMPT INJECTED ─────────────────────────") + "\n"
-    + C("33"; (.data.text // "")) + "\n"
-    + C("1;33"; "╰───────────────────────────────────────────") + "\n"
-  elif .type == "harness.message"
-       and (.data.type? == "message.part.delta")
-       and (.data.properties.field? == "text") then
-    (.data.properties.delta // "")
-  elif .type == "harness.message"
-       and (.data.type? == "message.part.updated")
-       and (.data.properties.part.type? == "tool") then
-    (.data.properties.part as $p
-     | if $p.state.status == "running" then
-         "\n" + C("36"; "⚙ " + ($p.tool // "tool") + " …") + "\n"
-       elif $p.state.status == "completed" then
-         "\n" + C("32"; "✓ " + ($p.tool // "tool"))
-         + C("2"; " " + (($p.state.title // "") | tostring)) + "\n"
-       elif $p.state.status == "error" then
-         "\n" + C("31"; "✗ " + ($p.tool // "tool") + ": "
-         + (($p.state.error // "") | tostring)) + "\n"
-       else empty end)
-  elif .type == "env.error" then
-    "\n" + C("1;31"; "[error] " + ((.data.message // .data) | tostring)) + "\n"
-  elif .type == "run.nudge" then
-    "\n" + C("35"; "[nudge] " + ((.data.reason // "") | tostring)) + "\n"
-  elif .type == "run.end" then
-    "\n\n" + C("1;35"; "══ RUN END: " + ((.data.reason // "") | tostring) + " ══") + "\n"
-  else empty end
-'
+# Rendering is stateful (delta/part dedupe, role tracking) — see watch_run.py.
+tail -n +1 -F "$TRACE" | python3 -u "$FB_ROOT/tools/watch_run.py"
