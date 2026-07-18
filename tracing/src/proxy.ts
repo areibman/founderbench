@@ -43,9 +43,12 @@ export class InterceptionProxy {
         res.end(JSON.stringify({ error: "proxy_error", message: String(err) }));
       });
     });
-    await new Promise<void>((resolve) =>
-      this.server!.listen(this.opts.port, "127.0.0.1", resolve),
-    );
+    await new Promise<void>((resolve, reject) => {
+      // Without this, a listen failure (EADDRINUSE from a stale run's proxy)
+      // leaves the promise pending forever and the orchestrator hangs silently.
+      this.server!.once("error", (err) => reject(new Error(`proxy listen on ${this.opts.port}: ${String(err)}`)));
+      this.server!.listen(this.opts.port, "127.0.0.1", resolve);
+    });
   }
 
   async stop(): Promise<void> {

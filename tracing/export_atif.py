@@ -310,6 +310,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("-o", "--output", type=Path, default=None)
+    ap.add_argument(
+        "--input-cost-per-mtok", type=float, default=None,
+        help="USD per 1M input tokens; overrides (or supplies missing) run-config pricing",
+    )
+    ap.add_argument(
+        "--output-cost-per-mtok", type=float, default=None,
+        help="USD per 1M output tokens; overrides (or supplies missing) run-config pricing",
+    )
     args = ap.parse_args()
     run_dir: Path = args.run_dir
     out: Path = args.output or (run_dir / "trajectory.json")
@@ -319,14 +327,22 @@ def main() -> None:
     run_end = next((e["data"] for e in events if e["type"] == "run.end"), {})
     cfg = run_start.get("config") or {}
     budget = cfg.get("budget") or {}
-    # No pricing in the run config means cost is unknown — omit it rather than
-    # emitting a misleading $0.00.
-    has_pricing = (
-        budget.get("input_cost_per_mtok") is not None
-        or budget.get("output_cost_per_mtok") is not None
+    # Pricing: CLI flags win (lets old runs be re-exported with rates their
+    # config lacked), then the run config. No pricing at all means cost is
+    # unknown — omit it rather than emitting a misleading $0.00.
+    in_mtok = (
+        args.input_cost_per_mtok
+        if args.input_cost_per_mtok is not None
+        else budget.get("input_cost_per_mtok")
     )
-    in_cost = (budget.get("input_cost_per_mtok") or 0) / 1_000_000
-    out_cost = (budget.get("output_cost_per_mtok") or 0) / 1_000_000
+    out_mtok = (
+        args.output_cost_per_mtok
+        if args.output_cost_per_mtok is not None
+        else budget.get("output_cost_per_mtok")
+    )
+    has_pricing = in_mtok is not None or out_mtok is not None
+    in_cost = (in_mtok or 0) / 1_000_000
+    out_cost = (out_mtok or 0) / 1_000_000
     model_name = (cfg.get("model") or {}).get("model_id", "unknown")
 
     request_events = [
