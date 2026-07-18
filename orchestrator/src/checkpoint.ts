@@ -41,7 +41,13 @@ export class CheckpointStore {
 
 function gitSha(dir: string): string | null {
   try {
-    return execSync("git rev-parse HEAD", { cwd: dir, encoding: "utf8" }).trim();
+    // stdio pipe: without it execSync leaks the child's stderr to the console
+    // ("fatal: not a git repository" every checkpoint when the workspace is ~).
+    return execSync("git rev-parse HEAD", {
+      cwd: dir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
   } catch {
     return null;
   }
