@@ -33,7 +33,7 @@ export class InterceptionProxy {
   private server: Server | null = null;
   readonly usage: ProxyUsageTotals = { requests: 0, inputTokens: 0, outputTokens: 0 };
 
-  constructor(private readonly opts: ProxyOptions) {}
+  constructor(private readonly opts: ProxyOptions) { }
 
   async start(): Promise<void> {
     this.server = createServer((req, res) => {
@@ -103,6 +103,22 @@ export class InterceptionProxy {
       { parentId: requestId },
     );
 
+    // Azure OpenAI (gpt-5 family / reasoning models) rejects `max_tokens` and
+    // requires `max_completion_tokens`; OpenCode's openai-compatible provider
+    // sends the former. Rewrite for Azure only — the verbatim req.json side
+    // file above still records exactly what the agent sent.
+    let forwardBody = bodyRaw;
+    if (
+      new URL(url).hostname.endsWith(".azure.com") &&
+      bodyJson !== undefined &&
+      typeof bodyJson === "object" &&
+      bodyJson !== null &&
+      "max_tokens" in bodyJson
+    ) {
+      const { max_tokens, ...rest } = bodyJson as { max_tokens: unknown } & Record<string, unknown>;
+      forwardBody = Buffer.from(JSON.stringify({ ...rest, max_completion_tokens: max_tokens }));
+    }
+
     // Forward headers, minus hop-by-hop; optionally override auth.
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(req.headers)) {
@@ -122,7 +138,7 @@ export class InterceptionProxy {
     const upstreamRes = await fetch(url, {
       method: req.method ?? "POST",
       headers,
-      body: ["GET", "HEAD"].includes(req.method ?? "") ? undefined : bodyRaw,
+      body: ["GET", "HEAD"].includes(req.method ?? "") ? undefined : forwardBody,
     });
 
     // Relay status + headers (skip encodings we didn't preserve).
@@ -137,7 +153,7 @@ export class InterceptionProxy {
     const accumulated: Buffer[] = [];
     if (upstreamRes.body) {
       const reader = upstreamRes.body.getReader();
-      for (;;) {
+      for (; ;) {
         const { done, value } = await reader.read();
         if (done) break;
         res.write(value);

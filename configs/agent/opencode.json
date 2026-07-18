@@ -1,34 +1,36 @@
 {
   "$schema": "https://opencode.ai/config.json",
-
   "model": "founderbench/gpt-5.6-sol",
-
   "provider": {
     "founderbench": {
-      "npm": "@ai-sdk/openai-compatible",
+      "npm": "@ai-sdk/openai",
       "name": "FounderBench traced provider",
       "options": {
         "baseURL": "http://127.0.0.1:41500/v1",
         "apiKey": "{env:MODEL_API_KEY}"
       },
       "models": {
-        "gpt-5.6-sol": { "name": "Azure OpenAI deployment (via interception proxy)" }
+        "gpt-5.6-sol": {
+          "name": "Azure OpenAI deployment (via interception proxy)"
+        }
       }
     }
   },
-
   "permission": {
     "edit": "allow",
     "bash": "allow",
     "webfetch": "allow",
-    "skill": { "*": "allow" }
+    "skill": {
+      "*": "allow"
+    }
   },
-
   "mcp": {
     "exa": {
       "type": "remote",
       "url": "https://mcp.exa.ai/mcp",
-      "headers": { "x-api-key": "{env:EXA_API_KEY}" },
+      "headers": {
+        "x-api-key": "{env:EXA_API_KEY}"
+      },
       "oauth": false,
       "enabled": true
     },
@@ -39,21 +41,24 @@
     },
     "xcmcp": {
       "type": "local",
-      "command": ["xcmcp", "--wait-for-xcode=0s"],
+      "command": [
+        "xcmcp",
+        "--wait-for-xcode=0s"
+      ],
       "enabled": true,
       "timeout": 20000
     },
     "axmcp": {
       "type": "local",
-      "command": ["axmcp"],
+      "command": [
+        "axmcp"
+      ],
       "enabled": true
     }
   },
-
   "tools": {
     "axmcp_*": false
   },
-
   "agent": {
     "build": {
       "tools": {
