@@ -319,6 +319,12 @@ def main() -> None:
     run_end = next((e["data"] for e in events if e["type"] == "run.end"), {})
     cfg = run_start.get("config") or {}
     budget = cfg.get("budget") or {}
+    # No pricing in the run config means cost is unknown — omit it rather than
+    # emitting a misleading $0.00.
+    has_pricing = (
+        budget.get("input_cost_per_mtok") is not None
+        or budget.get("output_cost_per_mtok") is not None
+    )
     in_cost = (budget.get("input_cost_per_mtok") or 0) / 1_000_000
     out_cost = (budget.get("output_cost_per_mtok") or 0) / 1_000_000
     model_name = (cfg.get("model") or {}).get("model_id", "unknown")
@@ -374,7 +380,7 @@ def main() -> None:
         completion_tokens = usage.get("completion_tokens")
         cost = (
             (prompt_tokens or 0) * in_cost + (completion_tokens or 0) * out_cost
-            if usage else None
+            if usage and has_pricing else None
         )
         tool_calls = [
             ToolCall(
