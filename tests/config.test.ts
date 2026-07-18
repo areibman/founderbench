@@ -1,7 +1,9 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadRunConfig, FB_ROOT } from "../orchestrator/src/config.ts";
+import { loadRunConfig, loadCredentialsEnv, FB_ROOT } from "../orchestrator/src/config.ts";
 
 before(() => {
   process.env.MODEL_ID ??= "gpt-5.6-sol";
@@ -31,6 +33,35 @@ test("workspace dir expands home", () => {
   assert.ok(cfg.workspace.dir.length > 1);
   assert.notEqual(cfg.workspace.dir, "~");
   assert.ok(!cfg.workspace.dir.includes("$HOME"));
+});
+
+test("loadCredentialsEnv parses dotenv format (quotes, inline comments)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fb-cred-"));
+  const p = join(dir, "credentials.env");
+  writeFileSync(
+    p,
+    [
+      'FB_TEST_QUOTED="abc" # inline comment',
+      "FB_TEST_SINGLE='def'",
+      "FB_TEST_PLAIN=ghi # comment",
+      'FB_TEST_HASH="a#b"',
+      "FB_TEST_PRESET=from-file",
+    ].join("\n"),
+  );
+  process.env.FB_TEST_PRESET = "from-env";
+  try {
+    loadCredentialsEnv(p);
+    assert.equal(process.env.FB_TEST_QUOTED, "abc");
+    assert.equal(process.env.FB_TEST_SINGLE, "def");
+    assert.equal(process.env.FB_TEST_PLAIN, "ghi");
+    assert.equal(process.env.FB_TEST_HASH, "a#b");
+    // Real environment wins over the file, like node --env-file.
+    assert.equal(process.env.FB_TEST_PRESET, "from-env");
+  } finally {
+    for (const k of Object.keys(process.env)) {
+      if (k.startsWith("FB_TEST_")) delete process.env[k];
+    }
+  }
 });
 
 test("missing MODEL_ID throws", () => {

@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseEnv } from "node:util";
 import { parse as parseToml } from "smol-toml";
 
 export const FB_ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), "..", ".."));
@@ -132,25 +133,18 @@ export function loadRunConfig(path: string): RunConfig {
   return cfg;
 }
 
-/** Load credentials.env (simple KEY=VALUE / KEY="VALUE" lines) into process.env. */
-export function loadCredentialsEnv(): void {
-  const p = join(FB_ROOT, "credentials.env");
-  if (!existsSync(p)) return;
-  for (const line of readFileSync(p, "utf8").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq < 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
+/**
+ * Load credentials.env (dotenv format) into process.env. Parsing is delegated
+ * to Node's built-in `util.parseEnv` (quotes, inline comments, multi-line —
+ * same parser as `node --env-file`). Real environment variables win over the
+ * file, matching `--env-file` semantics.
+ */
+export function loadCredentialsEnv(path = join(FB_ROOT, "credentials.env")): void {
+  if (!existsSync(path)) return;
+  const parsed = parseEnv(readFileSync(path, "utf8")) as Record<string, string>;
+  for (const [key, raw] of Object.entries(parsed)) {
+    if (key in process.env) continue;
     // Expand $HOME / ~ minimally
-    value = value.replace(/^\$HOME|^~(?=\/)/, process.env.HOME ?? "~");
-    if (!(key in process.env)) process.env[key] = value;
+    process.env[key] = raw.replace(/^\$HOME|^~(?=\/)/, process.env.HOME ?? "~");
   }
 }
