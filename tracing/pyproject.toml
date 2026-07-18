@@ -2,7 +2,9 @@
 name = "founderbench-tracing"
 version = "0.1.0"
 description = "Trace exporters: runs/<id>/trace.jsonl -> Harbor ATIF / verifiers v1 Trace"
-requires-python = ">=3.12"
+# <3.14: harbor -> litellm ships a PyO3 extension (pyo3 0.23) that supports
+# CPython <= 3.13; on 3.14 uv falls back to an sdist build that fails.
+requires-python = ">=3.12,<3.14"
 dependencies = [
     # Harbor's ATIF pydantic models + validator (export_atif.py)
     "harbor>=0.19.0",
