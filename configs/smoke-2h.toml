@@ -36,6 +36,14 @@ exclude = [
   ".build/",
   "DerivedData/",
   "*.xcuserstate",
+  # workspace is ~ — same machine-churn excludes as pilot-24h, or the shadow
+  # repo's first `git add -A` stages all of ~/Library and stalls startup.
+  # Library/ + .Trash/ are also TCC-protected: staging them makes git add
+  # fail outright ("Operation not permitted" → fatal: adding files failed).
+  "Library/",
+  ".Trash/",
+  "founderbench/runs/",
+  ".cursor/",
 ]
 
 [metrics.commands]

@@ -42,6 +42,7 @@ exclude = [
   "Library/",
   ".Trash/",
   "founderbench/runs/",
+  ".cursor/",
 ]
 
 # Whole-filesystem change record: every path the agent (or anything else)

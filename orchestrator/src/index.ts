@@ -161,8 +161,11 @@ class Orchestrator {
     // attribution differs from Terminal/SSH where verify.sh runs).
     await capabilityPreflight(this.trace);
 
+    console.log(`[start] proxy listening on :${this.cfg.model.proxy_port}`);
     await this.proxy.start();
+    console.log(`[start] launching opencode serve on :${this.cfg.opencode.port} (cwd ${this.cfg.workspace.dir})`);
     await this.opencode.start();
+    console.log("[start] opencode healthy");
     this.opencode.onExit((code) => {
       if (this.ending) return;
       this.setState("crashed", { opencodeExit: code });

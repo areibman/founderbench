@@ -259,7 +259,9 @@ export class GitShadowCollector {
       gitDir: this.gitDir,
       exclude: this.exclude,
     });
-    await this.snapshot("run-start");
+    // Fire-and-forget: the first `git add -A` of a big work-tree (~) can take
+    // minutes; it must not gate session creation and the kickoff prompt.
+    void this.snapshot("run-start");
   }
 
   async stop(): Promise<void> {
