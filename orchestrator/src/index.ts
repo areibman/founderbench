@@ -404,6 +404,20 @@ class Orchestrator {
     }
   }
 
+  /**
+   * Kill child processes and exit. Without this, Ctrl+C / launchd bootout
+   * leaks the `opencode serve` child, which keeps holding its port and makes
+   * the next run hang or attach to a stale server.
+   */
+  async shutdown(signal: string): Promise<void> {
+    this.ending = true;
+    this.trace.emit("run.state", "orchestrator", { state: "shutdown", detail: { signal } });
+    console.log(`\n[shutdown] ${signal} — stopping opencode + proxy`);
+    await this.opencode.stop().catch(() => {});
+    await this.proxy.stop().catch(() => {});
+    process.exit(0);
+  }
+
   private checkpoint(): void {
     this.checkpoints.save(
       {
@@ -451,10 +465,9 @@ if (checkpoint && Date.now() >= checkpoint.endAt) {
 
 const orchestrator = new Orchestrator(cfg, runId, checkpoint);
 
-process.on("SIGTERM", () => {
-  bootstrapTrace.emit("run.state", "orchestrator", { state: "sigterm" });
-  process.exit(0);
-});
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, () => void orchestrator.shutdown(sig));
+}
 
 orchestrator.run().catch((err) => {
   bootstrapTrace.emit("env.error", "orchestrator", { message: String(err), fatal: true });
