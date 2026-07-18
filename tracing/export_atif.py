@@ -61,6 +61,123 @@ def read_events(run_dir: Path) -> list[dict[str, Any]]:
 
 
 # ── raw-body parsing ────────────────────────────────────────────────────────
+#
+# Two wire dialects, matching proxy.ts: Chat Completions (choices/delta) and
+# the Responses API (typed events / output items). Every parser returns the
+# same normalized turn dict: {content, reasoning, tool_calls, usage} with
+# usage normalized to {prompt_tokens, completion_tokens, cached_tokens}.
+
+
+def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Map both dialects' usage naming onto chat-completions naming."""
+    if not usage:
+        return None
+    if "input_tokens" in usage or "output_tokens" in usage:
+        details = usage.get("input_tokens_details") or {}
+        return {
+            "prompt_tokens": usage.get("input_tokens"),
+            "completion_tokens": usage.get("output_tokens"),
+            "cached_tokens": details.get("cached_tokens"),
+        }
+    details = usage.get("prompt_tokens_details") or {}
+    return {
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "cached_tokens": details.get("cached_tokens"),
+    }
+
+
+def turn_from_responses_output(output: list[Any], usage: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalized turn from a Responses-API `output` item array."""
+    content: list[str] = []
+    reasoning: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("type")
+        if kind == "message":
+            for part in item.get("content") or []:
+                if isinstance(part, dict) and part.get("type") == "output_text":
+                    content.append(part.get("text") or "")
+        elif kind == "reasoning":
+            for part in item.get("summary") or []:
+                if isinstance(part, dict) and part.get("text"):
+                    reasoning.append(part["text"])
+        elif kind == "function_call":
+            tool_calls.append(
+                {
+                    "id": item.get("call_id") or item.get("id"),
+                    "name": item.get("name", ""),
+                    "arguments": item.get("arguments", ""),
+                }
+            )
+    return {
+        "content": "".join(content) or None,
+        "reasoning": "\n\n".join(reasoning) or None,
+        "tool_calls": tool_calls,
+        "usage": normalize_usage(usage),
+    }
+
+
+def parse_responses_sse(raw: str) -> dict[str, Any]:
+    """Merge a Responses-API SSE stream into one assistant turn.
+
+    The `response.completed` event carries the full final response (all output
+    items + usage), so prefer it. Fall back to accumulating deltas and
+    `output_item.done` events for streams truncated before completion.
+    """
+    frames: list[dict[str, Any]] = []
+    for line in raw.split("\n"):
+        if not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            frames.append(json.loads(payload))
+        except json.JSONDecodeError:
+            continue
+
+    for j in reversed(frames):
+        if j.get("type") == "response.completed":
+            response = j.get("response") or {}
+            return turn_from_responses_output(
+                response.get("output") or [], response.get("usage")
+            )
+
+    # Truncated stream: rebuild from completed items, then loose deltas.
+    items = [
+        j["item"]
+        for j in frames
+        if j.get("type") == "response.output_item.done" and isinstance(j.get("item"), dict)
+    ]
+    turn = turn_from_responses_output(items, None)
+    if turn["content"] is None:
+        text = "".join(
+            j.get("delta") or ""
+            for j in frames
+            if j.get("type") == "response.output_text.delta"
+        )
+        turn["content"] = text or None
+    if turn["reasoning"] is None:
+        summary = "".join(
+            j.get("delta") or ""
+            for j in frames
+            if j.get("type") == "response.reasoning_summary_text.delta"
+        )
+        turn["reasoning"] = summary or None
+    return turn
+
+
+def is_responses_sse(raw: str) -> bool:
+    for line in raw.split("\n"):
+        if line.startswith("data:") and '"type":"response.' in line.replace(" ", ""):
+            return True
+        if line.startswith("event: response."):
+            return True
+    return False
+
 
 def parse_chat_sse(raw: str) -> dict[str, Any]:
     """Merge a chat-completions SSE stream into one assistant message."""
@@ -101,7 +218,7 @@ def parse_chat_sse(raw: str) -> dict[str, Any]:
         "content": "".join(content) or None,
         "reasoning": "".join(reasoning) or None,
         "tool_calls": [tool_calls[i] for i in sorted(tool_calls)],
-        "usage": usage,
+        "usage": normalize_usage(usage),
     }
 
 
@@ -112,11 +229,15 @@ def parse_response_body(run_dir: Path, data: dict[str, Any]) -> dict[str, Any] |
         raw = (run_dir / data["bodyFile"]).read_text()
     if data.get("streaming"):
         if raw is not None:
-            return parse_chat_sse(raw)
+            return parse_responses_sse(raw) if is_responses_sse(raw) else parse_chat_sse(raw)
         body = data.get("body") or {}
         return {"content": body.get("text"), "reasoning": None, "tool_calls": [], "usage": None}
     wire = json.loads(raw) if raw is not None else data.get("body")
-    if not isinstance(wire, dict) or "choices" not in wire:
+    if not isinstance(wire, dict):
+        return None
+    if "output" in wire:  # Responses API, non-streaming
+        return turn_from_responses_output(wire.get("output") or [], wire.get("usage"))
+    if "choices" not in wire:
         return None
     msg = (wire.get("choices") or [{}])[0].get("message") or {}
     return {
@@ -130,7 +251,7 @@ def parse_response_body(run_dir: Path, data: dict[str, Any]) -> dict[str, Any] |
             }
             for tc in msg.get("tool_calls") or []
         ],
-        "usage": wire.get("usage"),
+        "usage": normalize_usage(wire.get("usage")),
     }
 
 
@@ -145,6 +266,7 @@ def tool_results_from_requests(run_dir: Path, request_events: list[dict[str, Any
             body = json.loads((run_dir / d["bodyFile"]).read_bytes())
         except (OSError, json.JSONDecodeError):
             continue
+        # Chat Completions: tool-role messages.
         for msg in body.get("messages") or []:
             if msg.get("role") != "tool":
                 continue
@@ -157,6 +279,19 @@ def tool_results_from_requests(run_dir: Path, request_events: list[dict[str, Any
                     p.get("text", "") for p in content if isinstance(p, dict)
                 )
             results[call_id] = content if isinstance(content, str) else json.dumps(content)
+        # Responses API: function_call_output items in the input array.
+        for item in body.get("input") or []:
+            if not isinstance(item, dict) or item.get("type") != "function_call_output":
+                continue
+            call_id = item.get("call_id")
+            if not call_id or call_id in results:
+                continue
+            output = item.get("output")
+            if isinstance(output, list):
+                output = "".join(
+                    p.get("text", "") for p in output if isinstance(p, dict)
+                )
+            results[call_id] = output if isinstance(output, str) else json.dumps(output)
     return results
 
 
@@ -192,7 +327,7 @@ def main() -> None:
     request_events = [
         e for e in events
         if e["type"] == "model.request"
-        and (e["data"].get("path") or "").endswith("/chat/completions")
+        and (e["data"].get("path") or "").endswith(("/chat/completions", "/responses"))
     ]
     response_by_id = {
         e["data"].get("requestId"): e for e in events if e["type"] == "model.response"
@@ -274,6 +409,7 @@ def main() -> None:
             step_kwargs["metrics"] = Metrics(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                cached_tokens=usage.get("cached_tokens"),
                 cost_usd=round(cost, 6) if cost is not None else None,
             )
         steps.append(Step(**step_kwargs))
