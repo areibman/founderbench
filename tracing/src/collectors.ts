@@ -246,6 +246,13 @@ export class GitShadowCollector {
         join(this.gitDir, "info", "exclude"),
         [".git/", ...this.exclude].join("\n") + "\n",
       );
+      // The work-tree is typically ~, which always contains paths git cannot
+      // read (TCC-protected: Library, Photos Library, .Trash, ...). The
+      // exclude list handles bulk/noise, but unreadable paths are unknowable
+      // in advance — make add skip them instead of dying ("fatal: adding
+      // files failed"). Nested repos become gitlinks; silence the advice.
+      await this.git(["config", "add.ignoreErrors", "true"]);
+      await this.git(["config", "advice.addEmbeddedRepo", "false"]);
     } catch (err) {
       this.trace.emit("env.error", "gitshadow", {
         message: `shadow repo init failed: ${String(err)}`,
@@ -284,7 +291,13 @@ export class GitShadowCollector {
     }
     this.busy = true;
     try {
-      await this.git(["add", "-A"]);
+      // add.ignoreErrors makes unreadable (TCC-protected) paths a warning,
+      // but add can still exit non-zero (e.g. a nested repo with no commits).
+      // Whatever it staged is valid — the add rc must never kill a snapshot.
+      let addWarnings: string | null = null;
+      await this.git(["add", "-A"]).catch((err) => {
+        addWarnings = String(err).slice(0, 500);
+      });
       const status = await this.git(["status", "--porcelain"]);
       if (status.trim().length > 0) {
         await this.git(["commit", "-q", "-m", `shadow: ${trigger}`]);
@@ -294,6 +307,7 @@ export class GitShadowCollector {
           sha,
           trigger,
           stat: stat.slice(-500),
+          ...(addWarnings ? { addWarnings } : {}),
         });
       }
     } catch (err) {
@@ -315,7 +329,9 @@ export class GitShadowCollector {
       execFile(
         "git",
         ["--git-dir", this.gitDir, "--work-tree", this.workTree, ...args],
-        { cwd: this.workTree, timeout: 60_000, maxBuffer: 16 * 1024 * 1024 },
+        // 10 min: the first `add -A` of a whole home directory is legitimately
+        // slow; a too-small timeout kills healthy snapshots mid-flight.
+        { cwd: this.workTree, timeout: 600_000, maxBuffer: 64 * 1024 * 1024 },
         (err, stdout, stderr) => (err ? reject(new Error(`git ${args[0]}: ${stderr || err}`)) : resolve(stdout)),
       );
     });
