@@ -1,11 +1,8 @@
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#   "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers",
-# ]
-# ///
 """
 Export a FounderBench run into a verifiers v1 `Trace` ("PI trace").
+
+Dependencies are declared in tracing/pyproject.toml (locked via uv.lock):
+  uv run --project tracing tracing/export_vf_trace.py runs/<run-id>
 
 Reads runs/<run-id>/trace.jsonl (+ verbatim body side files under bodies/) and
 reconstructs the vf message graph exactly as verifiers' interception server

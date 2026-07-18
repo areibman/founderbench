@@ -1,0 +1,15 @@
+[project]
+name = "founderbench-tracing"
+version = "0.1.0"
+description = "Trace exporters: runs/<id>/trace.jsonl -> Harbor ATIF / verifiers v1 Trace"
+requires-python = ">=3.12"
+dependencies = [
+    # Harbor's ATIF pydantic models + validator (export_atif.py)
+    "harbor>=0.19.0",
+    # verifiers v1 Trace / message graph (export_vf_trace.py)
+    "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers",
+]
+
+[tool.uv]
+# Exporters are plain scripts, not an installable package.
+package = false

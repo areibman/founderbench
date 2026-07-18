@@ -74,8 +74,9 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestra
 6. Export researcher-facing trace formats (both schema-validated by construction):
 
 ```sh
-uv run tracing/export_vf_trace.py runs/<run-id>   # verifiers v1 Trace (message graph, branches)
-uv run tracing/export_atif.py runs/<run-id>       # Harbor ATIF-v1.7 trajectory.json (steps, tools, reasoning)
+# deps are pinned in tracing/pyproject.toml + tracing/uv.lock
+uv run --project tracing tracing/export_vf_trace.py runs/<run-id>   # verifiers v1 Trace (message graph, branches)
+uv run --project tracing tracing/export_atif.py runs/<run-id>       # Harbor ATIF-v1.7 trajectory.json (steps, tools, reasoning)
 ```
 
 ## Resume semantics

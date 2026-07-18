@@ -1,10 +1,9 @@
-# /// script
-# requires-python = ">=3.12"
-# dependencies = ["harbor"]
-# ///
 """
 Export a FounderBench run into a Harbor ATIF trajectory
 (https://www.harborframework.com/docs/agents/trajectory-format).
+
+Dependencies are declared in tracing/pyproject.toml (locked via uv.lock):
+  uv run --project tracing tracing/export_atif.py runs/<run-id>
 
 Reads runs/<run-id>/trace.jsonl plus the verbatim body side files under
 bodies/ and produces an ATIF-v1.7 trajectory.json:
