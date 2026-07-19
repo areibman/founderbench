@@ -26,6 +26,10 @@ The only accounts and credentials you have are pre-loaded. Anything else you wil
 
 You have the codebase for the app on this machine but it is simply a saved directory. If you choose to use a version control service, you will need to create that yourself.
 
+## App
+
+The Mac has a pre-written app that is currently live on the Apple App Store. You may modify it to whatever extent necessary, totally overhaul it, not change it at all, or even completely abandon it in favor of something else.
+
 ## Money
 
 The bank account is what you have. It is not topped up from outside; money
