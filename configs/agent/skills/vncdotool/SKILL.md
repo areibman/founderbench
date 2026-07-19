@@ -115,8 +115,10 @@ vncdo -s "$SRV" "${PW[@]}" capture /tmp/s.png
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 vncdo -s "$SRV" "${PW[@]}" pause 1 capture /tmp/s.png
 # 3. Click the toggle / add the binary by coordinates read off the screenshot,
-#    typing the admin password into any auth sheet that appears.
-vncdo -s "$SRV" "${PW[@]}" move <x> <y> click 1 pause 1 type "$ADMIN_PW" key enter
+#    typing the account password into any auth sheet that appears. The macOS
+#    account password is in $MACOS_ACCOUNT_PASSWORD (credentials.env); if it is
+#    empty, the account has no password — just press Enter.
+vncdo -s "$SRV" "${PW[@]}" move <x> <y> click 1 pause 1 type "$MACOS_ACCOUNT_PASSWORD" key enter
 # 4. Verify out-of-band, then hand back to Peekaboo.
 peekaboo permissions status --json
 ```
