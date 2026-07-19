@@ -26,6 +26,8 @@ with snapshot/restore — never a shared login.
 | 1.9 | App Store auto-update off | `defaults read /Library/Preferences/com.apple.commerce AutoUpdate` → `0` |
 | 1.10 | SSH enabled (remote rescue) | `systemsetup -getremotelogin` → `On` |
 | 1.11 | Screen Sharing enabled (remote rescue) | `launchctl print system/com.apple.screensharing` |
+| 1.11a | Legacy-VNC password set (self-KVM auth) | `kickstart … -setvnclegacy -vnclegacy yes -setvncpw`; password stored mode-600 at `$VNC_PASSWORD_FILE` (default `~/.config/founderbench/vnc.pw`) |
+| 1.11b | Self-KVM capture works (loopback framebuffer) | `vncdo -s 127.0.0.1::5900 --password-file … capture /tmp/s.png` → non-black image; verify.sh §3 gates this |
 | 1.12 | Tailscale (or static IP) reachable | `tailscale status` / ping from another machine |
 | 1.13 | Crash reporter dialogs off | `defaults read com.apple.CrashReporter DialogType` → `none` |
 | 1.14 | SIP decision recorded | `csrutil status` (disabled on this appliance for TCC writes — deliberate) |

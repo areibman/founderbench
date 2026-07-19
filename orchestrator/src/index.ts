@@ -14,6 +14,7 @@
  */
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 import { TraceStore } from "../../tracing/src/trace.ts";
 import { InterceptionProxy } from "../../tracing/src/proxy.ts";
 import {
@@ -160,6 +161,12 @@ class Orchestrator {
     // Prove full computer-use access from inside THIS process tree (TCC
     // attribution differs from Terminal/SSH where verify.sh runs).
     await capabilityPreflight(this.trace);
+
+    // Stage 50's build keychain re-locks on a timeout; unlock it for the run
+    // unless the config opts out (the opt-out is recorded via run.start).
+    if (this.cfg.keychain?.auto_unlock !== false) {
+      await this.unlockBuildKeychain();
+    }
 
     console.log(`[start] proxy listening on :${this.cfg.model.proxy_port}`);
     await this.proxy.start();
@@ -404,6 +411,33 @@ class Orchestrator {
           )
           .catch(() => {});
       }
+    }
+  }
+
+  private async unlockBuildKeychain(): Promise<void> {
+    const keychain = "founderbench.keychain-db";
+    const pw = process.env.FB_KEYCHAIN_PASSWORD;
+    if (!pw) {
+      this.trace.emit("env.error", "orchestrator", {
+        message: "FB_KEYCHAIN_PASSWORD not set — build keychain stays locked; keychain dialogs possible (E2)",
+      });
+      return;
+    }
+    const sec = (args: string[]) =>
+      new Promise<void>((resolve, reject) => {
+        execFile("security", args, { timeout: 20_000 }, (err, _o, stderr) =>
+          err ? reject(new Error(stderr.trim() || String(err))) : resolve(),
+        );
+      });
+    try {
+      await sec(["unlock-keychain", "-p", pw, keychain]);
+      // No flags = no idle timeout and no lock-on-sleep for this keychain.
+      await sec(["set-keychain-settings", keychain]);
+      console.log("[start] build keychain unlocked (auto-lock disabled for run)");
+    } catch (err) {
+      this.trace.emit("env.error", "orchestrator", {
+        message: `build keychain unlock failed: ${String(err)} — keychain dialogs possible (E2)`,
+      });
     }
   }
 

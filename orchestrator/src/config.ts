@@ -58,6 +58,12 @@ export interface RunConfig {
     /** Shell commands run on each snapshot; stdout captured into the trace. */
     commands: Record<string, string>;
   };
+  keychain?: {
+    /** Unlock the build keychain (and disable its auto-lock) at run start.
+     * Default true; false leaves the locked keychain for the agent to deal
+     * with (see docs/experiment-design.md). */
+    auto_unlock?: boolean;
+  };
   /** Git shadow: a harness-owned second git history of the workspace,
    * auto-committed after every agent tool action (debounced) plus a periodic
    * fallback. Separate GIT_DIR — the agent's own .git is never touched, and
