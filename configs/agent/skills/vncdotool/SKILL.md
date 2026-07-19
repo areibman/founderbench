@@ -70,9 +70,12 @@ sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resourc
   -restart -agent -privs -all
 ```
 
-Store the password in a file (mode 600) and pass it with `--password-file` so it
-never lands in the process list. Confirm exact auth flags for the installed
-version with `vncdo --help`.
+Store the legacy password in a file (mode 600:
+`~/.config/founderbench/vnc.pw`). Note: macOS offers both legacy-VNC (type 2)
+and Apple DH/ARD (type 30) auth, and `vncdo` (1.3.0) always picks ARD when
+offered — so authenticate with the console user's **account** credentials
+(`-u "$(whoami)" -p "$MACOS_ACCOUNT_PASSWORD"`), not the vnc.pw. There is no
+`--password-file` option; confirm flags with `vncdo --help`.
 
 Loopback VNC controls the **active console session**, so the agent user must be
 auto-logged-in at the console (checklist 1.4) with sleep/lock disabled
@@ -83,7 +86,7 @@ a dummy HDMI plug, or clicks land on nothing.
 
 ```bash
 SRV="127.0.0.1::5900"          # host::port  (note the DOUBLE colon for a raw port)
-PW=(--password-file "$HOME/.config/founderbench/vnc.pw")
+PW=(-u "$(whoami)" -p "$MACOS_ACCOUNT_PASSWORD")   # ARD auth: account creds (see above)
 
 vncdo -s "$SRV" "${PW[@]}" capture /tmp/screen.png        # screenshot the session
 vncdo -s "$SRV" "${PW[@]}" move 400 300 click 1           # ALWAYS move before click

@@ -46,7 +46,9 @@ v "a simulator device exists"          bash -c 'xcrun simctl list devices availa
 
 log "══ 3. Permissions (the zero-dialog gates) ══"
 v "build keychain exists"              bash -c '[[ -f "$HOME/Library/Keychains/founderbench.keychain-db" ]]'
-v "build keychain unlockable"          bash -c 'security show-keychain-info founderbench.keychain-db 2>&1 | grep -q "no-timeout\|timeout"'
+v "build keychain unlockable"          bash -c '
+  security unlock-keychain -p "$FB_KEYCHAIN_PASSWORD" founderbench.keychain-db &&
+  security show-keychain-info founderbench.keychain-db 2>&1 | grep -q "no-timeout\|timeout"'
 if [[ -n "${APPLE_CERT_P12:-}" ]]; then
   v "codesign identity valid (p12 mode)" bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -qv "0 valid"'
 else
@@ -63,8 +65,14 @@ v "passwordless sudo (agent autonomy)" sudo -n true
 # Self-KVM: the machine drives its own console GUI over loopback VNC. This is
 # the break-glass path (vncdotool skill) for dialogs/toggles the app-level
 # tools can't reach. A single loopback capture proves the whole chain at once:
-# vncdo installed, Screen Sharing server up, legacy-VNC password accepted, and
-# a real framebuffer rendered (a headless mini with no display captures black).
+# vncdo installed, Screen Sharing server up, auth accepted, and a real
+# framebuffer rendered (a headless mini with no display captures black).
+#
+# Auth: macOS Screen Sharing offers both legacy-VNC (type 2) and Apple DH/ARD
+# (type 30); vncdo always picks ARD when offered, so we authenticate with the
+# console user's account credentials (-u/-p), not the legacy vnc.pw. The vnc.pw
+# file is still required — it is what keeps legacy VNC enabled on the server
+# and is the fallback for plain-VNC clients.
 VNC_PW_FILE="${VNC_PASSWORD_FILE:-$HOME/.config/founderbench/vnc.pw}"
 v "vncdo installed"                    bash -c 'command -v vncdo || command -v "$HOME/.local/bin/vncdo"'
 v "VNC password file exists (mode 600)" bash -c '[[ -f "'"$VNC_PW_FILE"'" ]] && [[ "$(stat -f "%OLp" "'"$VNC_PW_FILE"'")" == "600" ]]'
@@ -73,7 +81,7 @@ v "self-KVM: loopback VNC capture (auth + framebuffer)" bash -c '
   VNCDO=$(command -v vncdo || echo "$HOME/.local/bin/vncdo")
   OUT=/tmp/fb-verify-vnc.png
   rm -f "$OUT"
-  "$VNCDO" -s 127.0.0.1::5900 --password-file "'"$VNC_PW_FILE"'" capture "$OUT" 2>/tmp/fb-verify-vnc.err &&
+  "$VNCDO" -t 20 -s 127.0.0.1::5900 -u "$(whoami)" -p "$MACOS_ACCOUNT_PASSWORD" capture "$OUT" 2>/tmp/fb-verify-vnc.err &&
   [[ -s "$OUT" ]] &&
   # Not all-black: a rendered console session, not a headless void. Compare the
   # mean pixel value; 0 means nothing is being drawn (no display attached).
@@ -86,7 +94,7 @@ sys.exit(0 if hi > lo else 1)  # any variation = a real framebuffer
 PY'
 v "self-KVM: input round-trip (move+key accepted)" bash -c '
   VNCDO=$(command -v vncdo || echo "$HOME/.local/bin/vncdo")
-  "$VNCDO" -s 127.0.0.1::5900 --password-file "'"$VNC_PW_FILE"'" move 20 20 key escape 2>/tmp/fb-verify-vnc-input.err'
+  "$VNCDO" -t 20 -s 127.0.0.1::5900 -u "$(whoami)" -p "$MACOS_ACCOUNT_PASSWORD" move 20 20 key esc 2>/tmp/fb-verify-vnc-input.err'
 
 log "══ 4. Credentials (live) ══"
 bash ./60-credentials.sh >/dev/null 2>&1 && { ok "60-credentials.sh passes"; PASS=$((PASS+1)); } \
