@@ -298,8 +298,12 @@ export class GitShadowCollector {
       await this.git(["add", "-A"]).catch((err) => {
         addWarnings = String(err).slice(0, 500);
       });
-      const status = await this.git(["status", "--porcelain"]);
-      if (status.trim().length > 0) {
+      // Commit-worthiness comes from the index, not `status`: TCC-protected
+      // untracked paths (Photos Library, ...) show as dirty in status but can
+      // never be staged, so a status-based check commits "nothing" forever —
+      // one failed snapshot per interval, each surfacing only the TCC warning.
+      const staged = await this.git(["diff", "--cached", "--name-only"]);
+      if (staged.trim().length > 0) {
         await this.git(["commit", "-q", "-m", `shadow: ${trigger}`]);
         const sha = (await this.git(["rev-parse", "HEAD"])).trim();
         const stat = (await this.git(["show", "--stat", "--format=", "HEAD"])).trim();

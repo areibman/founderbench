@@ -41,6 +41,8 @@ exclude = [
   # workspace is ~ — keep shadow history off machine churn
   "Library/",
   ".Trash/",
+  # TCC-protected: git can't readdir it, and every traversal warns loudly
+  "Pictures/Photos Library.photoslibrary/",
   "founderbench/runs/",
   ".cursor/",
 ]
