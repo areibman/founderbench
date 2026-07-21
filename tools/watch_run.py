@@ -10,6 +10,7 @@ rendered from the orchestrator event), and prints each tool status once.
 """
 import json
 import sys
+from datetime import datetime
 
 
 def c(code: str, s: str) -> str:
@@ -26,6 +27,14 @@ part_type: dict[str, str] = {}  # partID -> "text" | "reasoning" | ...
 roles: dict[str, str] = {}     # messageID -> "user" | "assistant"
 tool_state: dict[str, str] = {}  # partID -> last printed tool status
 
+cur_dt = None  # datetime of the event being rendered (None until first event)
+last_day = ""
+
+
+def stamp() -> str:
+    """Dim [HH:MM:SS] prefix from the current event's trace timestamp."""
+    return c("2", f"[{cur_dt.strftime('%H:%M:%S')}] ") if cur_dt else ""
+
 
 def text_out(pid: str, mid: str, full_or_delta: str, *, delta: bool) -> None:
     if roles.get(mid) == "user":
@@ -36,7 +45,7 @@ def text_out(pid: str, mid: str, full_or_delta: str, *, delta: bool) -> None:
     if not chunk:
         return
     if off == 0:
-        w("\n")
+        w("\n" + stamp())
     w(c("2", chunk) if kind == "reasoning" else chunk)
     printed[pid] = off + len(chunk)
 
@@ -56,12 +65,12 @@ def on_part(part: dict) -> None:
         state = part.get("state") or {}
         name = part.get("tool") or "tool"
         if status == "running":
-            w("\n" + c("36", f"⚙ {name} …") + "\n")
+            w("\n" + stamp() + c("36", f"⚙ {name} …") + "\n")
         elif status == "completed":
             title = str(state.get("title") or "")
-            w("\n" + c("32", f"✓ {name}") + (c("2", f" {title}") if title else "") + "\n")
+            w("\n" + stamp() + c("32", f"✓ {name}") + (c("2", f" {title}") if title else "") + "\n")
         elif status == "error":
-            w("\n" + c("31", f"✗ {name}: {state.get('error') or ''}") + "\n")
+            w("\n" + stamp() + c("31", f"✗ {name}: {state.get('error') or ''}") + "\n")
 
 
 for line in sys.stdin:
@@ -71,17 +80,24 @@ for line in sys.stdin:
         continue
     t = e.get("type")
     d = e.get("data") or {}
+    ts = e.get("ts")
+    if isinstance(ts, (int, float)) and ts > 0:
+        cur_dt = datetime.fromtimestamp(ts / 1000)
+        day = cur_dt.strftime("%Y-%m-%d")
+        if day != last_day:
+            last_day = day
+            w("\n" + c("1;2", f"──────── {day} ────────") + "\n")
     if t == "run.state":
-        w("\n" + c("1;35", f"── [{d.get('state')}] ──") + "\n")
+        w("\n" + stamp() + c("1;35", f"── [{d.get('state')}] ──") + "\n")
     elif t == "run.nudge":
-        w("\n" + c("35", f"[nudge] {d.get('reason') or ''}") + "\n")
+        w("\n" + stamp() + c("35", f"[nudge] {d.get('reason') or ''}") + "\n")
     elif t == "run.end":
-        w("\n\n" + c("1;35", f"══ RUN END: {d.get('reason') or ''} ══") + "\n")
+        w("\n\n" + stamp() + c("1;35", f"══ RUN END: {d.get('reason') or ''} ══") + "\n")
     elif t == "env.error":
-        w("\n" + c("1;31", f"[error] {d.get('message') or d}") + "\n")
+        w("\n" + stamp() + c("1;31", f"[error] {d.get('message') or d}") + "\n")
     elif t in ("harness.message", "harness.tool", "harness.event"):
         if d.get("direction") == "inject":
-            w("\n\n" + c("1;33", "╭─ PROMPT INJECTED ─────────────────────────") + "\n"
+            w("\n\n" + stamp() + c("1;33", "╭─ PROMPT INJECTED ─────────────────────────") + "\n"
               + c("33", str(d.get("text") or "")) + "\n"
               + c("1;33", "╰───────────────────────────────────────────") + "\n")
             continue

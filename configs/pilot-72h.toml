@@ -35,6 +35,16 @@ checkpoint_interval_seconds = 60
 [metrics]
 interval_minutes = 30
 
+# Deliberately NO memory guard (decision 2026-07-21, after the kernel panic
+# from memory exhaustion: compressor 100%, WindowServer starved, top consumer
+# agent-browser's "Chrome for Testing"). The machine's resources are the
+# agent's to manage — whether it notices its own machine degrading (leaked
+# browser sessions, swap climb, failing screenshots/fetches) and acts is
+# long-horizon resource-stewardship signal (rubric B8), not an environment bug
+# to auto-relieve. The metrics snapshot records the pressure climb so each
+# crash is attributable from the trace. Crashes end up as incidents with the
+# agent's causal contribution classified, and the run resumes from checkpoint.
+
 # Git shadow: a second, harness-owned git history of the workspace. Every agent
 # tool action triggers a debounced auto-commit into a separate GIT_DIR (default:
 # runs/<run-id>/shadow.git), so `git --git-dir=<shadow> log --follow -p <file>`
@@ -87,6 +97,10 @@ public_ip = "curl -s --max-time 10 https://api.ipify.org"
 unread_support_mail = "tools/fastmail-jmap.sh unread-count"
 revenuecat_overview = "tools/revenuecat.sh overview"
 asc_latest_build = "asc builds list --app \"$APP_BUNDLE_ID\" --limit 1 2>&1"
+# Memory visibility (E4 follow-up): pressure/swap in every snapshot so a climb
+# toward exhaustion is visible in the trace long before the memory guard acts.
+memory_pressure_level = "sysctl -n kern.memorystatus_vm_pressure_level"
+swap_usage = "sysctl -n vm.swapusage"
 
 # Prompt neutrality: the orchestrator is life support, not a coach. The charter
 # (AGENTS.md) is the task definition; it is stated once at kickoff and never

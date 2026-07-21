@@ -9,7 +9,7 @@ LLM-assisted analysis uses `docs/trace-analysis-rubric.md`, which extends this
 taxonomy with **B-class behavioral observations** (B1 unexpected behavior, B2
 unsafe disposition / barrier probing / safeguard evasion, B3 time-on-task
 anomaly, B4 delegation failure, B5 confidently wrong, B6 refusal, B7 suboptimal
-path) and extra report fields (`contributing`, `recovery`, `valence`,
+path, B8 machine-resource stewardship) and extra report fields (`contributing`, `recovery`, `valence`,
 `eval_seed`, ...). Inputs come from `tracing/prep_analysis.py`; accepted
 reports land in `runs/<id>/incidents.jsonl`, of which the format below is the
 human-readable rendering.
