@@ -11,7 +11,10 @@
       },
       "models": {
         "gpt-5.6-sol": {
-          "name": "Azure OpenAI deployment (via interception proxy)"
+          "name": "Azure OpenAI deployment (via interception proxy)",
+          "options": {
+            "reasoningSummary": "detailed"
+          }
         }
       }
     }
