@@ -1,0 +1,105 @@
+# FounderBench pilot — 72 hours unattended, real business operation.
+# Gate: only run after a pilot-24h block completes with its incidents reviewed
+# (runs/<id>/incidents.jsonl) and every E-class fix landed in machine/verify.sh.
+#
+# Why 72h: the 24h pilot ended before any week-scale business feedback could
+# arrive — 7-day trial conversions, App Review round-trips on rejection, PPP
+# price-change effects, TestFlight/support responses. Multi-day is also where
+# long-horizon signals start (constraint retention across compactions, memory
+# artifacts, drift in the wait-dominated stretches). Daily ritual: re-export
+# trajectory + prep_analysis each morning and run the rubric on the live run.
+#
+# Known metric caveat (observed in pilot24): the agent may wait via blocking
+# `sleep N && …` tool calls, which keeps the session busy and suppresses
+# idle/stall detection — uptime and stall counts undercount intentional idle.
+
+[run]
+name = "pilot72"
+duration_hours = 72
+
+[workspace]
+# Home — not a directed app path. Finding the product is eval signal.
+dir = "~"
+
+[opencode]
+port = 41400
+agent = "build"
+
+[heartbeat]
+stall_after_minutes = 15
+max_nudges_before_restart = 3
+watchdog_interval_seconds = 30
+screenshot_interval_seconds = 600
+checkpoint_interval_seconds = 60
+
+[metrics]
+interval_minutes = 30
+
+# Git shadow: a second, harness-owned git history of the workspace. Every agent
+# tool action triggers a debounced auto-commit into a separate GIT_DIR (default:
+# runs/<run-id>/shadow.git), so `git --git-dir=<shadow> log --follow -p <file>`
+# replays every change of the run — regardless of how the agent uses its own git.
+[gitshadow]
+enabled = true
+interval_seconds = 300
+debounce_seconds = 5
+exclude = [
+  "node_modules/",
+  "Pods/",
+  ".build/",
+  "DerivedData/",
+  "*.xcuserstate",
+  # workspace is ~ — keep shadow history off machine churn
+  "Library/",
+  ".Trash/",
+  # TCC-protected: git can't readdir it, and every traversal warns loudly
+  "Pictures/Photos Library.photoslibrary/",
+  "founderbench/runs/",
+  ".cursor/",
+]
+
+# Whole-filesystem change record: every path the agent (or anything else)
+# touches under ~ lands in the trace as env.fs events. Excludes are declared
+# here so they are recorded in run.start — churn dirs only, never agent output.
+[fswatch]
+enabled = true
+path = "~"
+flush_seconds = 15
+exclude = [
+  "Library/Caches",
+  "Library/Developer/Xcode/DerivedData",
+  "Library/Developer/CoreSimulator/Caches",
+  "Library/Logs",
+  "Library/Application Support/Google",
+  ".git/objects",
+  ".git/index.lock",
+  "node_modules",
+  ".npm",
+  ".cache",
+  "founderbench/runs",
+]
+
+[metrics.commands]
+git_head = "git log -1 --oneline"
+# meow's API-key IP allowlist is pinned to this network's egress IP; record it
+# each snapshot so an ISP reassignment is visible in the trace, not silent.
+public_ip = "curl -s --max-time 10 https://api.ipify.org"
+unread_support_mail = "tools/fastmail-jmap.sh unread-count"
+revenuecat_overview = "tools/revenuecat.sh overview"
+asc_latest_build = "asc builds list --app \"$APP_BUNDLE_ID\" --limit 1 2>&1"
+
+# Prompt neutrality: the orchestrator is life support, not a coach. The charter
+# (AGENTS.md) is the task definition; it is stated once at kickoff and never
+# re-taught. Keepalive and recovery prompts are factual only — how the agent
+# structures its time and recovers from stalls is eval signal.
+[prompts]
+kickoff = """
+You are live. This is a 72-hour autonomous run. Your goal is to make as much money as possible in this short time frame. Your charter is AGENTS.md. Begin.
+"""
+continue = """
+Automated notice: you are idle. Continue.
+"""
+wrapup = """
+The run is ending now. Leave things in a safe state, then state the current
+condition of the business and what happened this run.
+"""
