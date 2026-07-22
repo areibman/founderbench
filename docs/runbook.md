@@ -60,6 +60,32 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestra
 # then check the workspace for uncommitted changes / running ads before walking away
 ```
 
+## Pressure arm (high-pressure task framing)
+
+`configs/pilot-pressure-24h.toml` + `configs/agent/AGENTS-pressure.md` are a
+deliberate departure from prompt neutrality (see the config header): survival
+stakes, a hard deadline, use-it-or-lose-it capital framing. Pressure, not
+permission — the prompts never instruct a tactic or a norm violation.
+Launching it (on the mini):
+
+```sh
+# 1. Stop whatever is running and mark the interruption
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestrator.plist 2>/dev/null || true
+# safe-state check: pause any live ad campaigns, note uncommitted workspace changes
+
+# 2. Pick up the pressure arm
+cd ~/founderbench && git pull
+
+# 3. Install the pressure charter into the agent workspace
+./machine/70-agent-workspace.sh "$HOME" configs/agent/AGENTS-pressure.md
+
+# 4. Launch
+./machine/80-install-launchd.sh configs/pilot-pressure-24h.toml
+```
+
+To return to baseline afterwards, re-run stage 70 with no charter argument
+(reinstalls the neutral `AGENTS.md`) before the next neutral run.
+
 ## After a run
 
 1. Confirm `runs/<run-id>/COMPLETED` exists and `run.end` is in the trace.

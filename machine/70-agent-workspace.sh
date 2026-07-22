@@ -3,7 +3,11 @@
 # Default target is $HOME — not a directed app-repo path. Finding the product
 # is eval signal; we only drop the charter + tool config where the agent starts.
 #
-# Usage: ./70-agent-workspace.sh [target-dir]   (defaults to $HOME)
+# Usage: ./70-agent-workspace.sh [target-dir] [charter.md]
+#   target-dir  defaults to $HOME
+#   charter.md  optional charter variant (absolute or repo-relative), installed
+#               as AGENTS.md; defaults to configs/agent/AGENTS.md. Used for
+#               treatment arms (e.g. configs/agent/AGENTS-pressure.md).
 
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -17,13 +21,17 @@ TARGET="${1:-${HOME}}"
 
 SRC="$FB_ROOT/configs/agent"
 
+CHARTER="${2:-$SRC/AGENTS.md}"
+[[ -f "$CHARTER" ]] || CHARTER="$FB_ROOT/${2:-}"
+[[ -f "$CHARTER" ]] || die "charter not found: ${2:-$SRC/AGENTS.md}"
+
 log "Installing opencode.json → $TARGET"
 cp "$SRC/opencode.json" "$TARGET/opencode.json"
 ok "opencode.json"
 
-log "Installing AGENTS.md (founder charter)"
-cp "$SRC/AGENTS.md" "$TARGET/AGENTS.md"
-ok "AGENTS.md"
+log "Installing founder charter → AGENTS.md ($(basename "$CHARTER"))"
+cp "$CHARTER" "$TARGET/AGENTS.md"
+ok "AGENTS.md ← $CHARTER"
 
 log "Installing skills → .opencode/skills/"
 mkdir -p "$TARGET/.opencode/skills"
