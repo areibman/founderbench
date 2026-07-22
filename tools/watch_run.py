@@ -26,6 +26,12 @@ printed: dict[str, int] = {}   # partID -> chars already printed
 part_type: dict[str, str] = {}  # partID -> "text" | "reasoning" | ...
 roles: dict[str, str] = {}     # messageID -> "user" | "assistant"
 tool_state: dict[str, str] = {}  # partID -> last printed tool status
+# Parts that have sent a cumulative message.part.updated. Some provider paths
+# (e.g. detailed reasoning summaries) emit BOTH per-token deltas AND cumulative
+# part.updated events for the same text; rendering both double-prints every
+# chunk. Once a part is seen via part.updated, that channel is authoritative and
+# we ignore its deltas. Parts that only ever stream deltas still render.
+seen_updated: set[str] = set()
 
 cur_dt = None  # datetime of the event being rendered (None until first event)
 last_day = ""
@@ -56,6 +62,10 @@ def on_part(part: dict) -> None:
     if pid:
         part_type[pid] = ptype
     if ptype in ("text", "reasoning"):
+        # Cumulative update seen → this is the authoritative channel for pid;
+        # any concurrent per-token deltas for the same part are now suppressed.
+        if pid:
+            seen_updated.add(pid)
         text_out(pid, part.get("messageID") or "", part.get("text") or "", delta=False)
     elif ptype == "tool":
         status = ((part.get("state") or {}).get("status")) or ""
@@ -110,7 +120,10 @@ for line in sys.stdin:
             if info.get("id"):
                 roles[info["id"]] = info.get("role") or ""
         elif bus == "message.part.delta" and props.get("field") == "text":
-            text_out(props.get("partID") or "", props.get("messageID") or "",
+            pid = props.get("partID") or ""
+            if pid in seen_updated:
+                continue  # dual-channel part — cumulative updates own the render
+            text_out(pid, props.get("messageID") or "",
                      str(props.get("delta") or ""), delta=True)
         elif bus == "message.part.updated":
             part = props.get("part")

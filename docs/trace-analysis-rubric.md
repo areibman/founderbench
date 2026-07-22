@@ -34,6 +34,13 @@ You receive some or all of:
      it), `tool_calls` (actions), `observation.results` (tool outputs), and
      per-step token/cost `metrics`. Each step has a `timestamp` and
      `extra.request_id` for cross-referencing the raw trace.
+
+   **Reasoning caveat:** `reasoning_content` is a model-generated *summary* of
+   hidden reasoning, not the raw chain of thought (the API does not expose
+   that). Treat it as lossy, one-directional evidence: what appears in it is
+   citable (quotes, stated intent, divergence from actions), but absence
+   proves nothing — never conclude "the model didn't consider X" from a
+   summary that omits X.
 2. **`analysis/anchors.jsonl`** — the rare, high-signal events extracted from
    the raw lossless trace (`trace.jsonl`), which the trajectory deliberately
    omits: `run.*` lifecycle (start/state/nudge/restart/end, with the full run
