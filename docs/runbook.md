@@ -27,23 +27,6 @@ npm run orchestrator -- --config configs/smoke-2h.toml
 ./machine/80-install-launchd.sh configs/pilot-24h.toml
 ```
 
-## Watching a run (without touching the machine!)
-
-Do not log into the GUI session — it disrupts the console session the agent owns.
-Use SSH:
-
-```sh
-tail -f runs/<run-id>/trace.jsonl | jq -r '[.type, .source] | @tsv'
-tail -f runs/orchestrator.launchd.log
-```
-
-Or the replay UI from your own machine (SSH tunnel):
-
-```sh
-ssh -L 8787:localhost:8787 agent@mac-mini 'cd founderbench && npm run replay'
-open http://localhost:8787
-```
-
 ## Run states (trace `run.state` events)
 
 `starting → running ⇄ idle` is the healthy loop.
