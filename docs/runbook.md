@@ -95,9 +95,3 @@ uv run --project tracing tracing/export_atif.py runs/<run-id>       # Harbor ATI
   COMPLETED marker and resumes it (same run id, same OpenCode session → context intact).
 - Wall-clock end time is preserved in the checkpoint, so a crash near the end doesn't
   extend the run.
-
-## Emergency contacts / kill switches
-
-- Business spend: meow dashboard (freeze card) and Meta Ads Manager (account spend cap).
-- Machine: `ssh agent@mac-mini 'launchctl bootout gui/501 ~/Library/LaunchAgents/com.founderbench.orchestrator.plist'`.
-- Model: revoke MODEL_API_KEY at the provider.
