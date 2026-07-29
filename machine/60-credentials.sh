@@ -101,11 +101,19 @@ if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
     fi'
   must "Meta Ads: WRITE path (create+delete PAUSED probe campaign)" bash -c '
     GV="${META_GRAPH_API_VERSION:-v25.0}"
+    # All accounts the token can actually reach — used both for discovery and
+    # to catch a stale/mistyped META_AD_ACCOUNT_ID (subcode-33 "does not
+    # exist" errors on writes are usually this, not a permissions wall).
+    REACHABLE=$(curl -s --max-time 20 \
+      "https://graph.facebook.com/$GV/me/adaccounts?fields=id,name,account_status&limit=25" \
+      -H "Authorization: Bearer $META_ACCESS_TOKEN")
     ACCT="${META_AD_ACCOUNT_ID:-}"
     if [[ -z "$ACCT" ]]; then
-      ACCT=$(curl -s --max-time 20 \
-        "https://graph.facebook.com/$GV/me/adaccounts?fields=id&limit=1" \
-        -H "Authorization: Bearer $META_ACCESS_TOKEN" | jq -r ".data[0].id // empty")
+      ACCT=$(jq -r ".data[0].id // empty" <<<"$REACHABLE")
+    elif ! jq -e --arg a "$ACCT" ".data[]? | select(.id == \$a)" <<<"$REACHABLE" >/dev/null; then
+      echo "META_AD_ACCOUNT_ID=$ACCT is NOT among the accounts this token can reach — fix the env var (or the token user needs a role on that account)."
+      echo "reachable accounts: $(jq -c "[.data[]? | {id,name,account_status}]" <<<"$REACHABLE")"
+      exit 1
     fi
     [[ -n "$ACCT" ]] || { echo "no ad account discoverable"; exit 1; }
     create_campaign() {
