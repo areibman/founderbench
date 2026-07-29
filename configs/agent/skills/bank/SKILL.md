@@ -72,15 +72,16 @@ curl -s "${auth[@]}" -H "Content-Type: application/json" \
     "purpose": "Meta ads budget for July"
   }' | jq
 
-# Full card number for checkout (PAN + CVC + expiry) — TWO steps:
-# 1. Claim a short-lived reveal grant:
-GRANT=$(curl -s "${auth[@]}" -X POST "$MEOW/cards/$CARD_ID/pan")
-REVEAL_URL=$(jq -r .reveal_url <<<"$GRANT")
-REVEAL_TOKEN=$(jq -r .reveal_token <<<"$GRANT")
-# 2. GET the reveal_url with BOTH the api key and the bearer token
-#    (the token expires in ~token_expires_in_seconds — use it immediately):
-curl -s "${auth[@]}" -H "Authorization: Bearer $REVEAL_TOKEN" "$REVEAL_URL" | jq
+# Full card number for checkout (PAN + CVC + expiry). The LIVE API returns it
+# directly in ONE call:
+curl -s "${auth[@]}" -X POST "$MEOW/cards/$CARD_ID/pan" | jq
 # → { "card_number": "...", "cvc": "...", "exp_month": n, "exp_year": n }
+#
+# (The published docs describe a newer two-step flow instead — the POST returns
+# {reveal_url, reveal_token} and you GET the reveal_url with both the api key
+# and "Authorization: Bearer <reveal_token>". If the response ever has
+# reveal_url instead of card_number, do that second step.)
+# Handle the PAN carefully: use it at the checkout, do not write it to files.
 
 # Freeze / unfreeze / change limits:
 curl -s "${auth[@]}" -H "Content-Type: application/json" \

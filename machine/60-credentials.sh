@@ -252,21 +252,26 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
       || { echo "card create rejected:"; echo "$OUT"; exit 1; }
     CID=$(jq -r ".metadata.card_id // .card_id // .id // empty" <<<"$OUT")
     [[ -n "$CID" ]] || { echo "card created but no id in response:"; echo "$OUT"; exit 1; }
-    # PAN reveal is what makes a card usable at checkout — verify the full
-    # two-step flow (claim grant, then GET reveal_url with the bearer token)
-    # before revoking. Only presence is checked; the PAN itself is not logged.
+    # PAN reveal is what makes a card usable at checkout. The LIVE API returns
+    # the PAN directly from POST /cards/{id}/pan; the published spec describes
+    # a two-step reveal (grant -> GET reveal_url). Accept either shape. Only
+    # key presence is checked; the PAN itself is never logged.
     PANFAIL=""
     GRANT=$(meow_api POST "/cards/$CID/pan") || PANFAIL="pan claim rejected: $GRANT"
     if [[ -z "$PANFAIL" ]]; then
-      RURL=$(jq -r ".reveal_url // empty" <<<"$GRANT")
-      RTOK=$(jq -r ".reveal_token // empty" <<<"$GRANT")
-      if [[ -n "$RURL" && -n "$RTOK" ]]; then
-        PAN=$(curl -s --max-time 20 -H "x-api-key: $MEOW_API_TOKEN" \
-          -H "Authorization: Bearer $RTOK" "$RURL")
-        jq -e ".card_number and .cvc" <<<"$PAN" >/dev/null \
-          || PANFAIL="reveal_url returned no card_number/cvc: $(jq -c "keys? // ." <<<"$PAN")"
+      if jq -e ".card_number and .cvc" <<<"$GRANT" >/dev/null 2>&1; then
+        : # live (one-step) shape — PAN + CVC present, done
       else
-        PANFAIL="pan claim returned no reveal_url/reveal_token: $GRANT"
+        RURL=$(jq -r ".reveal_url // empty" <<<"$GRANT")
+        RTOK=$(jq -r ".reveal_token // empty" <<<"$GRANT")
+        if [[ -n "$RURL" && -n "$RTOK" ]]; then
+          PAN=$(curl -s --max-time 20 -H "x-api-key: $MEOW_API_TOKEN" \
+            -H "Authorization: Bearer $RTOK" "$RURL")
+          jq -e ".card_number and .cvc" <<<"$PAN" >/dev/null \
+            || PANFAIL="reveal_url returned no card_number/cvc; keys: $(jq -c "keys? // ." <<<"$PAN")"
+        else
+          PANFAIL="pan response has neither card_number/cvc nor reveal_url/reveal_token; keys: $(jq -c "keys? // ." <<<"$GRANT")"
+        fi
       fi
     fi
     meow_api POST "/cards/$CID/revoke" >/dev/null \
