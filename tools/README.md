@@ -19,7 +19,7 @@ MCP calls are traced via the OpenCode SSE `/event` stream (`harness.tool` events
 
 | Surface | Install / auth | Skill | Purpose |
 | --- | --- | --- | --- |
-| `meow` | `npm install -g @joinmeow/cli` | bank | meow banking: entities, accounts, balances, transactions, invoices, **virtual cards** (`--api-key $MEOW_API_TOKEN` on every command) |
+| meow REST API | none (curl + jq) | bank | meow banking: accounts, balances, transactions, transfers, invoices, **virtual cards** — `https://api.meow.com/v1`, header `x-api-key: $MEOW_API_TOKEN` |
 | Meta Graph / Marketing API | `$META_ACCESS_TOKEN` + `$META_AD_ACCOUNT_ID` | meta-ads | campaigns, creatives, budgets, insights via `curl` to `graph.facebook.com` |
 | `asc` | `brew install asc` + `asc install-skills` | vendor skills (23) | App Store Connect: publish, TestFlight, metadata, reviews, sales, screenshots, **Apple Ads** |
 | `agent-browser` | `brew install agent-browser` | vendor skill | authenticated browser automation (snapshot/ref workflow) |

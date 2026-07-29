@@ -1,128 +1,133 @@
 ---
 name: bank
-version: 0.9.2
-description: "Handles Meow setup, business formation, authentication, payments, cards, invoicing, document uploads, and configuration via CLI or MCP. Use when the user wants to form a business, get started with Meow, log in, send ACH, wire, or USDC payments, manage cards or spend controls, create invoices, upload documents, or complete Meow configuration."
-tags: [fintech, cli, payments, mcp, developer-tools]
+version: 1.0.0
+description: "Meow business banking via the REST API: accounts, balances, transactions, virtual cards, ACH/wire/book/USDC transfers, contacts, and invoicing. Use when the user wants to check balances, review transactions, issue or revoke virtual cards, send payments, or create invoices."
+tags: [fintech, banking, payments, rest-api, cards, invoicing]
 metadata:
   openclaw:
     emoji: "🐱"
     homepage: https://www.meow.com
-    requires:
-      bins: [meow]
-    install:
-      - kind: node
-        package: "@joinmeow/cli"
-        bins: [meow]
 ---
 
-# Meow
+# Meow (REST API)
 
-Use this skill for Meow tasks through the Meow CLI or Meow MCP server.
-
-Prefer the CLI. Use MCP only when the Meow MCP server is already configured or a CLI install is not practical.
-
-## Network Access
-
-The CLI and MCP server require network access. If network access is restricted, use an agent that has it. See [MCP server docs](https://developer.meow.com/mcp-server) for setup details.
-
-## Default Workflow
-
-Start with `meow start` unless the user explicitly asks for a different Meow command. `start` is the preferred entrypoint for business formation and Meow onboarding because it returns guided next steps from the backend and keeps the flow current.
-
-```bash
-# Install and start
-npm install -g @joinmeow/cli
-meow start
-```
-
-If global install is not ideal, use `npx @joinmeow/cli start` instead.
-
-Every CLI response includes `hint` and `next_command` fields. Follow them.
-
-## CLI First
-
-Use the CLI when shell access is available. This includes terminal environments and agent sandboxes where commands can be executed directly.
-
-Use MCP only as a fallback when the remote server is already configured or a CLI install is not practical.
+Your bank is a Meow business account, operated **directly through the REST
+API** with `curl` + `jq`. There is no CLI and no MCP server in this setup —
+the API is the whole surface.
 
 ## Authentication
 
-An API key is already provisioned in the `MEOW_API_TOKEN` environment variable.
-Every command takes it via `--api-key`:
+- Base URL: `https://api.meow.com/v1`
+- Every request: header `x-api-key: $MEOW_API_TOKEN` (pre-provisioned).
+- Multi-entity keys: add `x-entity-id: <entity_id>` to scope a request.
 
 ```bash
-meow get-my-entity --api-key "$MEOW_API_TOKEN"
-meow list-bank-accounts --api-key "$MEOW_API_TOKEN"
-meow get-account-balances --account-id <id> --api-key "$MEOW_API_TOKEN"
+MEOW="https://api.meow.com/v1"
+auth=(-H "x-api-key: $MEOW_API_TOKEN")
+
+# Who am I / what can this key do (type + scopes)?
+curl -s "${auth[@]}" "$MEOW/api-keys/current" | jq
+# Which entities can it reach (for x-entity-id)?
+curl -s "${auth[@]}" "$MEOW/api-keys/accessible-entities" | jq
 ```
 
-Keys expire after about 7 days. If the key is rejected (401), issue a new one
-yourself via the email flow — the account email is your own mailbox:
+If a call returns 401/403, check `/api-keys/current` first — the key may lack
+the scope for that endpoint. Report exactly which scope is missing.
+
+## Accounts, balances, transactions
 
 ```bash
-meow login --email <your email>        # sends a 6-digit code to your inbox
-meow issue-onboarding-key --email <your email> --verification-code <code>
-# export the returned api_key as MEOW_API_TOKEN and update credentials.env
+curl -s "${auth[@]}" "$MEOW/accounts" | jq                          # list accounts
+curl -s "${auth[@]}" "$MEOW/accounts/$ACCOUNT_ID" | jq              # one account
+curl -s "${auth[@]}" "$MEOW/accounts/$ACCOUNT_ID/balances" | jq     # balances
+curl -s "${auth[@]}" "$MEOW/accounts/$ACCOUNT_ID/transactions" | jq # transactions
 ```
 
-No passwords are used — identity is confirmed via email verification codes.
+## Virtual cards
 
-A second credential may be present in `MEOW_REST_API_KEY`: a key for meow's
-REST customer API (`https://api.meow.com/v1`, sent as an `x-api-key` header).
-Same account, independent auth path.
+```bash
+curl -s "${auth[@]}" "$MEOW/cards" | jq                    # list cards
+curl -s "${auth[@]}" "$MEOW/cards/transactions" | jq       # card transactions
+curl -s "${auth[@]}" "$MEOW/cards/$CARD_ID/limits" | jq    # limits + remaining
 
-## Action Rules
+# Create a virtual card. Required: nickname (≤30 chars) and
+# spending_controls.per_transaction_limit (WHOLE DOLLARS).
+# single_use defaults to true (auto-revokes after first authorization).
+curl -s "${auth[@]}" -H "Content-Type: application/json" \
+  -X POST "$MEOW/cards" -d '{
+    "nickname": "meta-ads-jul",
+    "spending_controls": { "per_transaction_limit": 50, "monthly_limit": 100 },
+    "single_use": false,
+    "purpose": "Meta ads budget for July"
+  }' | jq
 
-Prefer `meow start` for business formation, first-time, ambiguous, or general Meow requests.
+# Full card number for checkout (PAN + CVV + expiry):
+curl -s "${auth[@]}" -X POST "$MEOW/cards/$CARD_ID/pan" | jq
 
-Do not guess missing required fields. Ask for them.
+# Freeze / unfreeze / change limits:
+curl -s "${auth[@]}" -H "Content-Type: application/json" \
+  -X PATCH "$MEOW/cards/$CARD_ID" -d '{"status":"frozen"}' | jq
 
-Ask for explicit confirmation before running `pay` or `confirm`.
-
-## CLI Tools
-
-| Tool      | Description                                         |
-| --------- | --------------------------------------------------- |
-| `start`   | Start the Meow CLI and guide through formation or setup |
-| `login`   | Send verification code to email                     |
-| `verify`  | Verify code and store encrypted credentials locally |
-| `logout`  | Clear stored credentials                            |
-| `pay`     | Send payments (ACH, wire, USDC)                     |
-| `card`    | Manage corporate cards and spend controls           |
-| `invoice` | Create and manage invoices                          |
-| `upload`  | Upload documents (handles encoding internally)      |
-| `confirm` | Submit completed configuration                      |
-
-Run `meow <command> --help` for full usage of any tool.
-
-## MCP Server
-
-```json
-{
-  "mcpServers": {
-    "meow": {
-      "type": "http",
-      "url": "https://mcp.meow.com/cli"
-    }
-  }
-}
+# Revoke immediately:
+curl -s "${auth[@]}" -X POST "$MEOW/cards/$CARD_ID/revoke" | jq
 ```
 
-Use this only when CLI use is not practical.
+To restrict a card to specific merchants, look them up first with
+`GET /cards/merchants?query=<name>` and pass their ids as
+`spending_restriction`.
 
-## Error Handling
+## Transfers (real money — verify before sending)
 
-| Error                     | Action                        |
-| ------------------------- | ----------------------------- |
-| 401 Unauthorized          | Re-run `login` flow and retry |
-| 400 Bad Request           | Check error, fix field, retry |
-| 500 Server Error          | Retry once after delay        |
-| Verification code expired | Run `login` again to resend   |
+Transfers need a contact (counterparty) first. Amounts are USD. Send an
+`Idempotency-Key` header on every money-moving POST so a retry can't
+double-pay.
 
-## Links
+```bash
+curl -s "${auth[@]}" "$MEOW/contacts" | jq                 # find counterparty_id
+# Create one if needed: POST /contacts with ACH, wire, check, or USDC details.
 
-- **Website:** https://www.meow.com
-- **CLI:** `npm install -g @joinmeow/cli`
-- **Documentation:** https://www.meow.com/llms.txt
-- **Skills:** https://www.meow.com/skills.md
-- **Terms of Service:** https://www.meow.com/legal/terms
+# ACH:
+curl -s "${auth[@]}" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -X POST "$MEOW/accounts/$ACCOUNT_ID/ach" -d '{
+    "amount": 25.00,
+    "counterparty_id": "'"$CONTACT_ID"'",
+    "description": "invoice 42"
+  }' | jq
+
+# Same shape for: /wire, /book (internal between own accounts),
+# /crypto (USDC — destination from a crypto contact).
+# Check status: GET /accounts/$ACCOUNT_ID/achs/$TRANSFER_ID (wires/{id} for wires).
+```
+
+Daily withdrawal cap: `GET /limits/daily-withdrawal` shows the cap and what's
+left today; `PUT` the same path adjusts it (whole dollars; 0 blocks all
+outbound transfers).
+
+## Invoicing (collect revenue)
+
+```bash
+curl -s "${auth[@]}" "$MEOW/billing/invoices" | jq         # list invoices
+# Flow: POST /billing/products → POST /billing/customers →
+#       POST /billing/invoices (line items reference product ids).
+# GET /billing/collection-accounts — where paid invoices land.
+```
+
+## Error handling
+
+| Response | Action |
+| -------- | ------ |
+| 401 | Key invalid/expired — check `/api-keys/current`; a new key must come from the Meow dashboard |
+| 403 | Key lacks the scope for this endpoint — report which scope |
+| 400 | Read the JSON error body, fix the field, retry |
+| 429 | Back off and retry after a delay |
+| 5xx | Retry once after a delay |
+
+Never invent required fields; if something is missing (contact details,
+account id), look it up first.
+
+## Full reference
+
+- Docs index (fetchable): https://developer.meow.com/llms.txt
+- OpenAPI spec: https://developer.meow.com/openapi.yaml
+- Errors reference: https://developer.meow.com/errors.md

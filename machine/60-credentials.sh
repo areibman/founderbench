@@ -202,49 +202,52 @@ else
   warn "EXA_API_KEY not set (exa MCP can also use OAuth; token recommended)"
 fi
 
-log "── meow.com banking ──"
-# Pilot 1 lesson: a valid key does NOT mean the account's endpoints are
-# enabled — meow support had to enable one mid-run. Probe every endpoint
+log "── meow.com banking (REST API) ──"
+# Run-block-2 decision: the CLI/MCP surface is DROPPED — dashboard-issued keys
+# are REST-type and the MCP surface rejects them ("Invalid API key type for
+# MCP operations"). The bank skill and these probes now target the REST API
+# directly: https://api.meow.com/v1, x-api-key header. Probe every endpoint
 # family the agent depends on, including the card-issuance WRITE path (the
-# probe card is single-use, $0.01, expires in 5 minutes, and is revoked
-# immediately — it self-cleans even if the revoke fails).
+# probe card is single-use with a $1 per-transaction limit and is revoked
+# immediately).
 if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
-  # CRITICAL: the meow CLI exits 0 even when the underlying tool call errors
-  # (it prints "Error calling tool ...: HTTP error 401 ..." and returns
-  # success). A raw `must $MEOW ...` therefore produces FALSE PASSES. Every
-  # meow probe must go through meow_call, which fails on tool-level errors.
-  meow_call() {  # meow_call <subcommand> [args...]
-    local OUT
-    OUT=$(npx -y @joinmeow/cli "$@" --api-key "$MEOW_API_TOKEN" 2>&1) \
-      || { printf '%s\n' "$OUT"; return 1; }
-    if grep -qE "Error calling tool|'error_code'|HTTP error [45][0-9][0-9]" <<<"$OUT"; then
-      printf '%s\n' "$OUT"; return 1
+  meow_api() {  # meow_api <method> <path> [json-body] — fails on non-2xx, prints body
+    local METHOD="$1" APIPATH="$2" BODY="${3:-}" RESP CODE
+    local ARGS=(-s --max-time 20 -X "$METHOD" -H "x-api-key: $MEOW_API_TOKEN" \
+                -w $'\n%{http_code}' "https://api.meow.com/v1$APIPATH")
+    [[ -n "$BODY" ]] && ARGS+=(-H "Content-Type: application/json" -d "$BODY")
+    RESP=$(curl "${ARGS[@]}") || { echo "curl failed reaching api.meow.com"; return 1; }
+    CODE=${RESP##*$'\n'}
+    RESP=${RESP%$'\n'*}
+    if [[ "$CODE" != 2* ]]; then
+      echo "HTTP $CODE: $RESP"
+      return 1
     fi
-    printf '%s\n' "$OUT"
+    printf '%s\n' "$RESP"
   }
-  must "meow: API key valid (get-my-entity)" meow_call get-my-entity
-  must "meow: accounts endpoint (list-bank-accounts)" meow_call list-bank-accounts
-  # get-account-balances requires --account-id; derive it from the first
-  # bank account rather than hardcoding one.
-  must "meow: balances endpoint (get-account-balances)" bash -c "$(declare -f meow_call); "'
-    OUT=$(meow_call list-bank-accounts) || { echo "$OUT"; exit 1; }
-    AID=$(grep -oE "\"(account_)?id\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" <<<"$OUT" | head -1 | sed -E "s/.*:[[:space:]]*\"([^\"]+)\"/\1/")
-    [[ -n "$AID" ]] || { echo "no account id found in list-bank-accounts output:"; echo "$OUT"; exit 1; }
-    meow_call get-account-balances --account-id "$AID"'
-  must "meow: cards endpoint (list-cards)" meow_call list-cards
-  must "meow: card transactions endpoint (list-card-transactions)" meow_call list-card-transactions
-  must "meow: card issuance WRITE path (create + revoke probe card)" bash -c "$(declare -f meow_call); "'
-    OUT=$(meow_call create-card \
-      --amount-cents 1 --merchant-name "FounderBench verify" \
-      --task-description "preflight write-path probe" \
-      --expires-in-minutes 5 --single-use true) \
-      || { echo "create-card rejected:"; echo "$OUT"; exit 1; }
-    CID=$(grep -oE "\"(card_)?id\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" <<<"$OUT" | head -1 | sed -E "s/.*:[[:space:]]*\"([^\"]+)\"/\1/")
-    [[ -n "$CID" ]] || { echo "create-card succeeded but no card id found in output:"; echo "$OUT"; exit 1; }
-    meow_call revoke-card --card-id "$CID" \
-      || echo "revoke failed — probe card self-expires in 5 min"'
+  must "meow REST: key valid + scopes (/api-keys/current)" bash -c "$(declare -f meow_api); "'
+    OUT=$(meow_api GET /api-keys/current) || { echo "$OUT"; exit 1; }
+    echo "$OUT" | jq -c "{type: (.type // .key_type // \"?\"), scopes: (.scopes // [])}" 2>/dev/null || true'
+  must "meow REST: accounts (/accounts)" bash -c "$(declare -f meow_api); "'
+    meow_api GET /accounts >/dev/null'
+  must "meow REST: balances (/accounts/{id}/balances)" bash -c "$(declare -f meow_api); "'
+    ACCTS=$(meow_api GET /accounts) || { echo "$ACCTS"; exit 1; }
+    AID=$(jq -r ".data[0].id // .accounts[0].id // .[0].id // empty" <<<"$ACCTS")
+    [[ -n "$AID" ]] || { echo "no account id in /accounts response:"; echo "$ACCTS"; exit 1; }
+    meow_api GET "/accounts/$AID/balances" >/dev/null'
+  must "meow REST: cards (/cards)" bash -c "$(declare -f meow_api); "'
+    meow_api GET /cards >/dev/null'
+  must "meow REST: card transactions (/cards/transactions)" bash -c "$(declare -f meow_api); "'
+    meow_api GET /cards/transactions >/dev/null'
+  must "meow REST: card issuance WRITE path (create + revoke probe card)" bash -c "$(declare -f meow_api); "'
+    OUT=$(meow_api POST /cards "{\"nickname\":\"fb-verify-probe\",\"spending_controls\":{\"per_transaction_limit\":1},\"single_use\":true,\"purpose\":\"preflight write-path probe — revoked immediately\"}") \
+      || { echo "card create rejected:"; echo "$OUT"; exit 1; }
+    CID=$(jq -r ".id // .card_id // .card.id // empty" <<<"$OUT")
+    [[ -n "$CID" ]] || { echo "card created but no id in response:"; echo "$OUT"; exit 1; }
+    meow_api POST "/cards/$CID/revoke" >/dev/null \
+      || echo "revoke failed — probe card is single-use with a \$1 limit; revoke manually: POST /cards/$CID/revoke"'
 else
-  fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow CLI with this key"; FAILURES=$((FAILURES+1))
+  fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow REST API with this key (dashboard-issued, x-api-key header)"; FAILURES=$((FAILURES+1))
 fi
 
 log "── AgentCard (virtual Visa cards) ──"

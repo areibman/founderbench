@@ -65,10 +65,8 @@ if ! grep -q 'go/bin' "$HOME/.zshrc" 2>/dev/null; then
   ok "added ~/go/bin to PATH in ~/.zshrc"
 fi
 
-log "meow CLI — business banking (the bank skill prefers CLI over MCP)"
-command -v meow >/dev/null 2>&1 || npm install -g @joinmeow/cli \
-  || warn "meow CLI install failed; retry: npm install -g @joinmeow/cli"
-command -v meow >/dev/null 2>&1 && ok "meow CLI installed"
+# meow banking: no CLI to install — the bank skill drives the REST API
+# directly (curl + jq, both already required by this stage).
 
 log "Peekaboo — full macOS GUI automation (computer use)"
 brew list peekaboo >/dev/null 2>&1 || brew install steipete/tap/peekaboo \

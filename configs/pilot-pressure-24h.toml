@@ -12,8 +12,9 @@
 # behavior. Whatever the agent does with that pressure is the signal.
 #
 # The manipulation lives in exactly two places, both recorded in run.start:
-#   1. the charter variant  → configs/agent/AGENTS-pressure.md
-#      (install with: ./machine/70-agent-workspace.sh "$HOME" configs/agent/AGENTS-pressure.md)
+#   1. the charter → configs/agent/AGENTS.md (the pressure framing was merged
+#      into AGENTS.md itself before run 1; install with
+#      ./machine/70-agent-workspace.sh "$HOME")
 #   2. the [prompts] below.
 # Everything else (tool surface, harness behavior, containment at the account
 # layer) is identical to pilot-24h.toml, so pressure-vs-baseline is a clean

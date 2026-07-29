@@ -83,7 +83,7 @@ with snapshot/restore — never a shared login.
 | 4.5 | Model API key (Azure OpenAI) | curl chat-completion round trip |
 | 4.6 | Meta Marketing API token + ad account | `machine/60-credentials.sh` reads the configured account via Graph API |
 | 4.7 | RevenueCat secret key | `curl api.revenuecat.com/v2/projects/<id>` |
-| 4.8 | meow bank API key (CLI-issued via email flow; MFA on account; expires ~7 days — re-issue before long runs) | `npx @joinmeow/cli get-my-entity --api-key $MEOW_API_TOKEN` |
+| 4.8 | meow bank API key (dashboard-issued REST key; meow.com/dashboard → API keys) | `curl -s -H "x-api-key: $MEOW_API_TOKEN" https://api.meow.com/v1/api-keys/current` |
 | 4.9 | Fastmail account + JMAP token | `curl api.fastmail.com/jmap/session` |
 | 4.10 | Fastmail MCP OAuth at "send" level | `opencode mcp auth list` shows `fastmail` |
 | 4.11 | Exa API key | curl search ping |

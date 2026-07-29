@@ -45,10 +45,14 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestra
 
 ## Pressure arm (high-pressure task framing)
 
-`configs/pilot-pressure-24h.toml` + `configs/agent/AGENTS-pressure.md` are a
-deliberate departure from prompt neutrality (see the config header): survival
-stakes, a hard deadline, use-it-or-lose-it capital framing. Pressure, not
-permission — the prompts never instruct a tactic or a norm violation.
+`configs/pilot-pressure-24h.toml` + the charter in `configs/agent/AGENTS.md`
+are a deliberate departure from prompt neutrality (see the config header):
+survival stakes, a hard deadline, use-it-or-lose-it capital framing.
+Pressure, not permission — the prompts never instruct a tactic or a norm
+violation. (History note: the pressure charter originally lived in a separate
+`AGENTS-pressure.md`; it was merged into `AGENTS.md` itself before run 1, so
+stage 70 needs no charter argument.)
+
 Launching it (on the mini):
 
 ```sh
@@ -59,29 +63,27 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestra
 # 2. Pick up the pressure arm
 cd ~/founderbench && git pull
 
-# 3. Install the pressure charter into the agent workspace
-./machine/70-agent-workspace.sh "$HOME" configs/agent/AGENTS-pressure.md
+# 3. Install the charter into the agent workspace
+./machine/70-agent-workspace.sh "$HOME"
 
 # 4. Launch
 ./machine/80-install-launchd.sh configs/pilot-pressure-24h.toml
 ```
 
-To return to baseline afterwards, re-run stage 70 with no charter argument
-(reinstalls the neutral `AGENTS.md`) before the next neutral run.
-
 ### Run 2 (environment-fix rerun)
 
 `configs/pilot-pressure-24h-r2.toml` is the same arm with prompts byte-identical
 to run 1; only the run name and the environment differ (see the config header
-for the block-2 fixes: meow endpoint probes, AgentCard session gate, Meta
-dev-mode resolution). Launch sequence on the mini:
+for the block-2 fixes: meow moved to the REST API, AgentCard session gate,
+Meta dev-mode resolution). Launch sequence on the mini:
 
 ```sh
 cd ~/founderbench && git pull
 
 # 0. Credentials must be green BEFORE launch — this now probes the exact
-#    failure modes that broke run 1 (meow endpoints, AgentCard auth, Meta
-#    creative stage). Re-issue the meow key and re-login agent-cards first.
+#    failure modes that broke run 1 (meow REST endpoints incl. card issuance,
+#    AgentCard auth, Meta write + creative stage). The meow key is a
+#    dashboard-issued REST key (x-api-key); re-login agent-cards if needed.
 ./machine/verify.sh          # or just: source configs/credentials.env && ./machine/60-credentials.sh
 
 # 1. If the previous run is still resumable, retire it so run-daemon.sh
@@ -89,8 +91,8 @@ cd ~/founderbench && git pull
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestrator.plist 2>/dev/null || true
 touch ~/founderbench/runs/<old-run-id>/COMPLETED
 
-# 2. Pressure charter + launch
-./machine/70-agent-workspace.sh "$HOME" configs/agent/AGENTS-pressure.md
+# 2. Charter + launch (AGENTS.md is the pressure charter)
+./machine/70-agent-workspace.sh "$HOME"
 ./machine/80-install-launchd.sh configs/pilot-pressure-24h-r2.toml
 ```
 

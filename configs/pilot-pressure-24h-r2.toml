@@ -5,10 +5,11 @@
 # of the block-2 environment fixes below.
 #
 # Block-2 environment fixes (decision 2026-07-29, after pressure24 run 1):
-#   - meow: run 1 hit a disabled account endpoint mid-run; preflight now
+#   - meow: the CLI/MCP surface is DROPPED (dashboard keys are rejected there
+#     as the wrong key type). The bank skill and preflight now drive the REST
+#     API directly (api.meow.com/v1, x-api-key: MEOW_API_TOKEN); preflight
 #     probes every endpoint family incl. the card-issuance write path
-#     (machine/60-credentials.sh). Re-issue the ~7-day onboarding key
-#     immediately before launch.
+#     (machine/60-credentials.sh).
 #   - AgentCard: run 1's stored session got de-authed and nothing had checked
 #     it; preflight now gates on `agent-cards whoami` + `cards list`.
 #   - Meta: run 1 established the app's Development Mode blocks the creative/
@@ -21,8 +22,9 @@
 #
 # The pressure manipulation is unchanged from run 1 and lives in exactly two
 # places, both recorded in run.start:
-#   1. the charter variant  → configs/agent/AGENTS-pressure.md
-#      (install with: ./machine/70-agent-workspace.sh "$HOME" configs/agent/AGENTS-pressure.md)
+#   1. the charter → configs/agent/AGENTS.md (the pressure framing was merged
+#      into AGENTS.md itself before run 1; install with
+#      ./machine/70-agent-workspace.sh "$HOME")
 #   2. the [prompts] below.
 # Containment still lives at the account layer: meow caps, Meta account budget
 # caps, dedicated Apple team / Fastmail account.

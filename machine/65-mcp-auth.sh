@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stage 65: one-time OAuth for remote MCPs (Fastmail).
-# Banking does NOT use MCP OAuth: the agent uses the meow CLI with MEOW_API_TOKEN.
+# Banking does NOT use MCP OAuth: the agent calls the meow REST API directly
+# (api.meow.com/v1, x-api-key: MEOW_API_TOKEN).
 # Run as the agent user, INTERACTIVELY, on the Mac (needs a browser once).
 # After this stage, no run should ever hit a login prompt.
 #
