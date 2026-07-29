@@ -85,6 +85,20 @@ if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
     curl -sf --max-time 20 \
       "https://graph.facebook.com/${META_GRAPH_API_VERSION:-v25.0}/me/adaccounts?fields=id,name&limit=1" \
       -H "Authorization: Bearer $META_ACCESS_TOKEN"
+  # Reads working while every write 404s (code 100 / subcode 33) is the
+  # signature of a token missing ads_management. Check the scope by name so
+  # the failure is self-diagnosing instead of a mystery downstream.
+  must "Meta Ads: token has ads_management scope" bash -c '
+    GV="${META_GRAPH_API_VERSION:-v25.0}"
+    RESP=$(curl -s --max-time 20 \
+      "https://graph.facebook.com/$GV/debug_token?input_token=$META_ACCESS_TOKEN&access_token=$META_ACCESS_TOKEN")
+    SCOPES=$(jq -r ".data.scopes // [] | join(\", \")" <<<"$RESP")
+    if ! grep -q "ads_management" <<<"$SCOPES"; then
+      echo "token is missing ads_management — regenerate it with ads_management (+ business_management, pages_read_engagement for the creative path)."
+      echo "granted scopes: ${SCOPES:-none/unreadable}"
+      jq -c ".error // empty" <<<"$RESP"
+      exit 1
+    fi'
   must "Meta Ads: WRITE path (create+delete PAUSED probe campaign)" bash -c '
     GV="${META_GRAPH_API_VERSION:-v25.0}"
     ACCT="${META_AD_ACCOUNT_ID:-}"
@@ -187,32 +201,39 @@ log "── meow.com banking ──"
 # probe card is single-use, $0.01, expires in 5 minutes, and is revoked
 # immediately — it self-cleans even if the revoke fails).
 if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
-  MEOW="npx -y @joinmeow/cli"
-  must "meow: API key valid (get-my-entity)" \
-    $MEOW get-my-entity --api-key "$MEOW_API_TOKEN"
-  must "meow: accounts endpoint (list-bank-accounts)" \
-    $MEOW list-bank-accounts --api-key "$MEOW_API_TOKEN"
+  # CRITICAL: the meow CLI exits 0 even when the underlying tool call errors
+  # (it prints "Error calling tool ...: HTTP error 401 ..." and returns
+  # success). A raw `must $MEOW ...` therefore produces FALSE PASSES. Every
+  # meow probe must go through meow_call, which fails on tool-level errors.
+  meow_call() {  # meow_call <subcommand> [args...]
+    local OUT
+    OUT=$(npx -y @joinmeow/cli "$@" --api-key "$MEOW_API_TOKEN" 2>&1) \
+      || { printf '%s\n' "$OUT"; return 1; }
+    if grep -qE "Error calling tool|'error_code'|HTTP error [45][0-9][0-9]" <<<"$OUT"; then
+      printf '%s\n' "$OUT"; return 1
+    fi
+    printf '%s\n' "$OUT"
+  }
+  must "meow: API key valid (get-my-entity)" meow_call get-my-entity
+  must "meow: accounts endpoint (list-bank-accounts)" meow_call list-bank-accounts
   # get-account-balances requires --account-id; derive it from the first
   # bank account rather than hardcoding one.
-  must "meow: balances endpoint (get-account-balances)" bash -c '
-    OUT=$(npx -y @joinmeow/cli list-bank-accounts --api-key "$MEOW_API_TOKEN" 2>&1) \
-      || { echo "$OUT"; exit 1; }
+  must "meow: balances endpoint (get-account-balances)" bash -c "$(declare -f meow_call); "'
+    OUT=$(meow_call list-bank-accounts) || { echo "$OUT"; exit 1; }
     AID=$(grep -oE "\"(account_)?id\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" <<<"$OUT" | head -1 | sed -E "s/.*:[[:space:]]*\"([^\"]+)\"/\1/")
     [[ -n "$AID" ]] || { echo "no account id found in list-bank-accounts output:"; echo "$OUT"; exit 1; }
-    npx -y @joinmeow/cli get-account-balances --api-key "$MEOW_API_TOKEN" --account-id "$AID"'
-  must "meow: cards endpoint (list-cards)" \
-    $MEOW list-cards --api-key "$MEOW_API_TOKEN"
-  must "meow: card transactions endpoint (list-card-transactions)" \
-    $MEOW list-card-transactions --api-key "$MEOW_API_TOKEN"
-  must "meow: card issuance WRITE path (create + revoke probe card)" bash -c '
-    OUT=$(npx -y @joinmeow/cli create-card --api-key "$MEOW_API_TOKEN" \
+    meow_call get-account-balances --account-id "$AID"'
+  must "meow: cards endpoint (list-cards)" meow_call list-cards
+  must "meow: card transactions endpoint (list-card-transactions)" meow_call list-card-transactions
+  must "meow: card issuance WRITE path (create + revoke probe card)" bash -c "$(declare -f meow_call); "'
+    OUT=$(meow_call create-card \
       --amount-cents 1 --merchant-name "FounderBench verify" \
       --task-description "preflight write-path probe" \
-      --expires-in-minutes 5 --single-use true 2>&1) \
-      || { echo "create-card rejected — endpoint not enabled for this account:"; echo "$OUT"; exit 1; }
+      --expires-in-minutes 5 --single-use true) \
+      || { echo "create-card rejected:"; echo "$OUT"; exit 1; }
     CID=$(grep -oE "\"(card_)?id\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" <<<"$OUT" | head -1 | sed -E "s/.*:[[:space:]]*\"([^\"]+)\"/\1/")
     [[ -n "$CID" ]] || { echo "create-card succeeded but no card id found in output:"; echo "$OUT"; exit 1; }
-    npx -y @joinmeow/cli revoke-card --api-key "$MEOW_API_TOKEN" --card-id "$CID" \
+    meow_call revoke-card --card-id "$CID" \
       || echo "revoke failed — probe card self-expires in 5 min"'
 else
   fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow CLI with this key"; FAILURES=$((FAILURES+1))
