@@ -36,8 +36,13 @@ the scope for that endpoint. Report exactly which scope is missing.
 
 ## Accounts, balances, transactions
 
+Account ids are nested in the list response:
+`.accounts[].depositAccount.accountId` (they look like `cash_account_<uuid>`).
+
 ```bash
 curl -s "${auth[@]}" "$MEOW/accounts" | jq                          # list accounts
+ACCOUNT_ID=$(curl -s "${auth[@]}" "$MEOW/accounts" \
+  | jq -r '.accounts[0].depositAccount.accountId')
 curl -s "${auth[@]}" "$MEOW/accounts/$ACCOUNT_ID" | jq              # one account
 curl -s "${auth[@]}" "$MEOW/accounts/$ACCOUNT_ID/balances" | jq     # balances
 curl -s "${auth[@]}" "$MEOW/accounts/$ACCOUNT_ID/transactions" | jq # transactions
@@ -50,12 +55,15 @@ curl -s "${auth[@]}" "$MEOW/cards" | jq                    # list cards
 curl -s "${auth[@]}" "$MEOW/cards/transactions" | jq       # card transactions
 curl -s "${auth[@]}" "$MEOW/cards/$CARD_ID/limits" | jq    # limits + remaining
 
-# Create a virtual card. Required: nickname (≤30 chars) and
+# Create a virtual card. Required: nickname (≤30 chars), amount (WHOLE USD —
+# the live API requires it even though the published docs omit it), and
 # spending_controls.per_transaction_limit (WHOLE DOLLARS).
 # single_use defaults to true (auto-revokes after first authorization).
+# The new card's id is at .metadata.card_id in the response.
 curl -s "${auth[@]}" -H "Content-Type: application/json" \
   -X POST "$MEOW/cards" -d '{
     "nickname": "meta-ads-jul",
+    "amount": 50,
     "spending_controls": { "per_transaction_limit": 50, "monthly_limit": 100 },
     "single_use": false,
     "purpose": "Meta ads budget for July"

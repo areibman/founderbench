@@ -111,8 +111,11 @@ if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
     if [[ -z "$ACCT" ]]; then
       ACCT=$(jq -r ".data[0].id // empty" <<<"$REACHABLE")
     elif ! jq -e --arg a "$ACCT" ".data[]? | select(.id == \$a)" <<<"$REACHABLE" >/dev/null; then
+      # NB: keep this jq out of a nested "$(...)" — bash brace-expands {a,b}
+      # inside that quoting context and shreds the program.
+      ACCTS_SUMMARY=$(jq -c "[.data[]? | {id: .id, name: .name, account_status: .account_status}]" <<<"$REACHABLE")
       echo "META_AD_ACCOUNT_ID=$ACCT is NOT among the accounts this token can reach — fix the env var (or the token user needs a role on that account)."
-      echo "reachable accounts: $(jq -c "[.data[]? | {id,name,account_status}]" <<<"$REACHABLE")"
+      echo "reachable accounts: $ACCTS_SUMMARY"
       exit 1
     fi
     [[ -n "$ACCT" ]] || { echo "no ad account discoverable"; exit 1; }
@@ -232,17 +235,20 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
     meow_api GET /accounts >/dev/null'
   must "meow REST: balances (/accounts/{id}/balances)" bash -c "$(declare -f meow_api); "'
     ACCTS=$(meow_api GET /accounts) || { echo "$ACCTS"; exit 1; }
-    AID=$(jq -r ".data[0].id // .accounts[0].id // .[0].id // empty" <<<"$ACCTS")
+    # /accounts nests the id: .accounts[].depositAccount.accountId (cash_account_...)
+    AID=$(jq -r ".accounts[0].depositAccount.accountId // .data[0].id // empty" <<<"$ACCTS")
     [[ -n "$AID" ]] || { echo "no account id in /accounts response:"; echo "$ACCTS"; exit 1; }
     meow_api GET "/accounts/$AID/balances" >/dev/null'
   must "meow REST: cards (/cards)" bash -c "$(declare -f meow_api); "'
     meow_api GET /cards >/dev/null'
   must "meow REST: card transactions (/cards/transactions)" bash -c "$(declare -f meow_api); "'
     meow_api GET /cards/transactions >/dev/null'
+  # The LIVE create-card schema requires "amount" (whole USD) even though the
+  # published OpenAPI spec omits it — production runs an older schema.
   must "meow REST: card issuance WRITE path (create + revoke probe card)" bash -c "$(declare -f meow_api); "'
-    OUT=$(meow_api POST /cards "{\"nickname\":\"fb-verify-probe\",\"spending_controls\":{\"per_transaction_limit\":1},\"single_use\":true,\"purpose\":\"preflight write-path probe — revoked immediately\"}") \
+    OUT=$(meow_api POST /cards "{\"nickname\":\"fb-verify-probe\",\"amount\":1,\"spending_controls\":{\"per_transaction_limit\":1},\"single_use\":true,\"purpose\":\"preflight write-path probe — revoked immediately\"}") \
       || { echo "card create rejected:"; echo "$OUT"; exit 1; }
-    CID=$(jq -r ".id // .card_id // .card.id // empty" <<<"$OUT")
+    CID=$(jq -r ".metadata.card_id // .card_id // .id // empty" <<<"$OUT")
     [[ -n "$CID" ]] || { echo "card created but no id in response:"; echo "$OUT"; exit 1; }
     meow_api POST "/cards/$CID/revoke" >/dev/null \
       || echo "revoke failed — probe card is single-use with a \$1 limit; revoke manually: POST /cards/$CID/revoke"'
