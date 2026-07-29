@@ -73,14 +73,41 @@ else
 fi
 
 log "── Meta Ads (direct Graph API) ──"
-# Token only — ad account id is agent-discoverable via /me/adaccounts.
+# Token optional as of run block 2: pilot 1 hit a dev-mode/access wall the read
+# probe below never caught (listing ad accounts worked; every write was
+# rejected). If Meta is provisioned it must now prove WRITE capability —
+# create a PAUSED campaign, then delete it — because that is what the agent
+# actually needs. If Meta is deliberately out of the tool surface for this
+# block, leave META_ACCESS_TOKEN unset AND remove the meta-ads skill + charter
+# mention so the agent isn't handed a dead affordance.
 if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
   must "Meta Ads: token can list ad accounts" \
     curl -sf --max-time 20 \
       "https://graph.facebook.com/${META_GRAPH_API_VERSION:-v25.0}/me/adaccounts?fields=id,name&limit=1" \
       -H "Authorization: Bearer $META_ACCESS_TOKEN"
+  must "Meta Ads: WRITE path (create+delete PAUSED probe campaign)" bash -c '
+    GV="${META_GRAPH_API_VERSION:-v25.0}"
+    ACCT="${META_AD_ACCOUNT_ID:-}"
+    if [[ -z "$ACCT" ]]; then
+      ACCT=$(curl -sf --max-time 20 \
+        "https://graph.facebook.com/$GV/me/adaccounts?fields=id&limit=1" \
+        -H "Authorization: Bearer $META_ACCESS_TOKEN" | jq -r ".data[0].id // empty")
+    fi
+    [[ -n "$ACCT" ]] || { echo "no ad account discoverable"; exit 1; }
+    RESP=$(curl -sf --max-time 30 -X POST \
+      "https://graph.facebook.com/$GV/$ACCT/campaigns" \
+      -H "Authorization: Bearer $META_ACCESS_TOKEN" \
+      -d "name=founderbench-verify-probe" \
+      -d "objective=OUTCOME_APP_PROMOTION" \
+      -d "status=PAUSED" \
+      -d "special_ad_categories=[]") || { echo "campaign create rejected — dev-mode/access-tier wall"; exit 1; }
+    CID=$(jq -r ".id // empty" <<<"$RESP")
+    [[ -n "$CID" ]] || { echo "create returned no id: $RESP"; exit 1; }
+    curl -sf --max-time 20 -X DELETE \
+      "https://graph.facebook.com/$GV/$CID" \
+      -H "Authorization: Bearer $META_ACCESS_TOKEN" >/dev/null'
 else
-  fail "META_ACCESS_TOKEN not set"; FAILURES=$((FAILURES+1))
+  warn "META_ACCESS_TOKEN not set — Meta is OUT of the tool surface this block (also remove the meta-ads skill + charter mention)"
 fi
 
 log "── Fastmail (JMAP) ──"
@@ -103,11 +130,49 @@ else
 fi
 
 log "── meow.com banking ──"
+# Pilot 1 lesson: a valid key does NOT mean the account's endpoints are
+# enabled — meow support had to enable one mid-run. Probe every endpoint
+# family the agent depends on, including the card-issuance WRITE path (the
+# probe card is single-use, $0.01, expires in 5 minutes, and is revoked
+# immediately — it self-cleans even if the revoke fails).
 if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
-  must "meow: API key valid (get-my-entity via CLI)" \
-    npx -y @joinmeow/cli get-my-entity --api-key "$MEOW_API_TOKEN"
+  MEOW="npx -y @joinmeow/cli"
+  must "meow: API key valid (get-my-entity)" \
+    $MEOW get-my-entity --api-key "$MEOW_API_TOKEN"
+  must "meow: accounts endpoint (list-bank-accounts)" \
+    $MEOW list-bank-accounts --api-key "$MEOW_API_TOKEN"
+  must "meow: balances endpoint (get-account-balances)" \
+    $MEOW get-account-balances --api-key "$MEOW_API_TOKEN"
+  must "meow: cards endpoint (list-cards)" \
+    $MEOW list-cards --api-key "$MEOW_API_TOKEN"
+  must "meow: card transactions endpoint (list-card-transactions)" \
+    $MEOW list-card-transactions --api-key "$MEOW_API_TOKEN"
+  must "meow: card issuance WRITE path (create + revoke probe card)" bash -c '
+    OUT=$(npx -y @joinmeow/cli create-card --api-key "$MEOW_API_TOKEN" \
+      --amount-cents 1 --merchant-name "FounderBench verify" \
+      --task-description "preflight write-path probe" \
+      --expires-in-minutes 5 --single-use true) || { echo "create-card rejected — endpoint not enabled for this account"; exit 1; }
+    CID=$(grep -oE "\"(card_)?id\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" <<<"$OUT" | head -1 | sed -E "s/.*:[[:space:]]*\"([^\"]+)\"/\1/")
+    [[ -n "$CID" ]] || { echo "no card id in create-card output"; exit 1; }
+    npx -y @joinmeow/cli revoke-card --api-key "$MEOW_API_TOKEN" --card-id "$CID" \
+      || echo "revoke failed — probe card self-expires in 5 min"'
 else
   fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow CLI with this key"; FAILURES=$((FAILURES+1))
+fi
+
+log "── AgentCard (virtual Visa cards) ──"
+# Pilot 1 lesson: AgentCard got de-authed mid-run and nothing had checked it.
+# Auth is a stored login session (agent-cards CLI / AgentCard MCP), not an env
+# credential — if these fail, re-login interactively on this machine
+# (`agent-cards` CLI) and re-auth the MCP, then re-run this stage. Only the
+# non-interactive commands are used here (whoami, cards list).
+if command -v agent-cards >/dev/null 2>&1; then
+  must "agent-cards: session authenticated (whoami)" \
+    agent-cards whoami
+  must "agent-cards: cards endpoint (cards list)" \
+    agent-cards cards list
+else
+  warn "agent-cards CLI not installed — AgentCard is OUT of the tool surface this block (also remove the agent-card skill + charter mention)"
 fi
 
 log "── OAuth-based MCPs (verified in stage 65) ──"
