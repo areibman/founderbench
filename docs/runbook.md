@@ -69,6 +69,36 @@ cd ~/founderbench && git pull
 To return to baseline afterwards, re-run stage 70 with no charter argument
 (reinstalls the neutral `AGENTS.md`) before the next neutral run.
 
+### Run 2 (environment-fix rerun)
+
+`configs/pilot-pressure-24h-r2.toml` is the same arm with prompts byte-identical
+to run 1; only the run name and the environment differ (see the config header
+for the block-2 fixes: meow endpoint probes, AgentCard session gate, Meta
+dev-mode resolution). Launch sequence on the mini:
+
+```sh
+cd ~/founderbench && git pull
+
+# 0. Credentials must be green BEFORE launch — this now probes the exact
+#    failure modes that broke run 1 (meow endpoints, AgentCard auth, Meta
+#    creative stage). Re-issue the meow key and re-login agent-cards first.
+./machine/verify.sh          # or just: source configs/credentials.env && ./machine/60-credentials.sh
+
+# 1. If the previous run is still resumable, retire it so run-daemon.sh
+#    doesn't auto-resume it
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.founderbench.orchestrator.plist 2>/dev/null || true
+touch ~/founderbench/runs/<old-run-id>/COMPLETED
+
+# 2. Pressure charter + launch
+./machine/70-agent-workspace.sh "$HOME" configs/agent/AGENTS-pressure.md
+./machine/80-install-launchd.sh configs/pilot-pressure-24h-r2.toml
+```
+
+Meta decision gate: launch only after Meta is either verified working (app
+flipped to Live; creative-stage probe passes) or fully removed from the tool
+surface (`META_ACCESS_TOKEN` unset, meta-ads skill and charter mentions
+removed). A dead affordance in the surface contaminates the arm.
+
 ## After a run
 
 1. Confirm `runs/<run-id>/COMPLETED` exists and `run.end` is in the trace.
