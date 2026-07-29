@@ -89,23 +89,41 @@ if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
     GV="${META_GRAPH_API_VERSION:-v25.0}"
     ACCT="${META_AD_ACCOUNT_ID:-}"
     if [[ -z "$ACCT" ]]; then
-      ACCT=$(curl -sf --max-time 20 \
+      ACCT=$(curl -s --max-time 20 \
         "https://graph.facebook.com/$GV/me/adaccounts?fields=id&limit=1" \
         -H "Authorization: Bearer $META_ACCESS_TOKEN" | jq -r ".data[0].id // empty")
     fi
     [[ -n "$ACCT" ]] || { echo "no ad account discoverable"; exit 1; }
-    RESP=$(curl -sf --max-time 30 -X POST \
-      "https://graph.facebook.com/$GV/$ACCT/campaigns" \
-      -H "Authorization: Bearer $META_ACCESS_TOKEN" \
-      -d "name=founderbench-verify-probe" \
-      -d "objective=OUTCOME_APP_PROMOTION" \
-      -d "status=PAUSED" \
-      -d "special_ad_categories=[]") || { echo "campaign create rejected — dev-mode/access-tier wall"; exit 1; }
+    create_campaign() {
+      curl -s --max-time 30 -X POST \
+        "https://graph.facebook.com/$GV/$ACCT/campaigns" \
+        -H "Authorization: Bearer $META_ACCESS_TOKEN" \
+        -d "name=founderbench-verify-probe" \
+        -d "objective=$1" \
+        -d "status=PAUSED" \
+        -d "special_ad_categories=[]"
+    }
+    delete_obj() {
+      curl -s --max-time 20 -X DELETE "https://graph.facebook.com/$GV/$1" \
+        -H "Authorization: Bearer $META_ACCESS_TOKEN" >/dev/null
+    }
+    RESP=$(create_campaign OUTCOME_APP_PROMOTION)
     CID=$(jq -r ".id // empty" <<<"$RESP")
-    [[ -n "$CID" ]] || { echo "create returned no id: $RESP"; exit 1; }
-    curl -sf --max-time 20 -X DELETE \
-      "https://graph.facebook.com/$GV/$CID" \
-      -H "Authorization: Bearer $META_ACCESS_TOKEN" >/dev/null'
+    if [[ -z "$CID" ]]; then
+      # Distinguish an objective-specific rejection from a blanket write wall.
+      RESP2=$(create_campaign OUTCOME_TRAFFIC)
+      CID2=$(jq -r ".id // empty" <<<"$RESP2")
+      if [[ -n "$CID2" ]]; then
+        delete_obj "$CID2"
+        echo "OUTCOME_APP_PROMOTION rejected but OUTCOME_TRAFFIC works — objective-specific block (likely no promotable app on the account), not a write wall."
+        echo "Graph error for APP_PROMOTION: $(jq -c ".error // ." <<<"$RESP")"
+      else
+        echo "campaign create rejected for BOTH objectives — write wall (dev mode / access tier / token scope)."
+        echo "Graph error: $(jq -c ".error // ." <<<"$RESP")"
+      fi
+      exit 1
+    fi
+    delete_obj "$CID"'
   # Campaign creation succeeds even in Development Mode; the wall pilot 2 hit
   # is at the CREATIVE stage — dev-mode apps cannot create public Page content,
   # so no eligible post exists to attach an ad to. Probe an inline (unpublished)
@@ -122,13 +140,17 @@ if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
       fi
       PAGE="'"$META_PROBE_PAGE"'"
       SPEC=$(jq -nc --arg p "$PAGE" "{page_id:\$p,link_data:{link:\"https://www.apple.com/app-store/\",message:\"founderbench verify probe\"}}")
-      RESP=$(curl -sf --max-time 30 -X POST \
+      RESP=$(curl -s --max-time 30 -X POST \
         "https://graph.facebook.com/$GV/$ACCT/adcreatives" \
         -H "Authorization: Bearer $META_ACCESS_TOKEN" \
         --data-urlencode "name=founderbench-verify-creative-probe" \
-        --data-urlencode "object_story_spec=$SPEC") || { echo "creative create rejected — app is still in Development Mode (flip to Live: Privacy Policy URL + App Icon + Category in App Settings)"; exit 1; }
+        --data-urlencode "object_story_spec=$SPEC")
       CRID=$(jq -r ".id // empty" <<<"$RESP")
-      [[ -n "$CRID" ]] || { echo "creative create returned no id: $RESP"; exit 1; }
+      if [[ -z "$CRID" ]]; then
+        echo "creative create rejected — likely still Development Mode (flip to Live: Privacy Policy URL + App Icon + Category in App Settings)."
+        echo "Graph error: $(jq -c ".error // ." <<<"$RESP")"
+        exit 1
+      fi
       curl -sf --max-time 20 -X DELETE \
         "https://graph.facebook.com/$GV/$CRID" \
         -H "Authorization: Bearer $META_ACCESS_TOKEN" >/dev/null || true'
@@ -170,8 +192,14 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
     $MEOW get-my-entity --api-key "$MEOW_API_TOKEN"
   must "meow: accounts endpoint (list-bank-accounts)" \
     $MEOW list-bank-accounts --api-key "$MEOW_API_TOKEN"
-  must "meow: balances endpoint (get-account-balances)" \
-    $MEOW get-account-balances --api-key "$MEOW_API_TOKEN"
+  # get-account-balances requires --account-id; derive it from the first
+  # bank account rather than hardcoding one.
+  must "meow: balances endpoint (get-account-balances)" bash -c '
+    OUT=$(npx -y @joinmeow/cli list-bank-accounts --api-key "$MEOW_API_TOKEN" 2>&1) \
+      || { echo "$OUT"; exit 1; }
+    AID=$(grep -oE "\"(account_)?id\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" <<<"$OUT" | head -1 | sed -E "s/.*:[[:space:]]*\"([^\"]+)\"/\1/")
+    [[ -n "$AID" ]] || { echo "no account id found in list-bank-accounts output:"; echo "$OUT"; exit 1; }
+    npx -y @joinmeow/cli get-account-balances --api-key "$MEOW_API_TOKEN" --account-id "$AID"'
   must "meow: cards endpoint (list-cards)" \
     $MEOW list-cards --api-key "$MEOW_API_TOKEN"
   must "meow: card transactions endpoint (list-card-transactions)" \
@@ -180,9 +208,10 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
     OUT=$(npx -y @joinmeow/cli create-card --api-key "$MEOW_API_TOKEN" \
       --amount-cents 1 --merchant-name "FounderBench verify" \
       --task-description "preflight write-path probe" \
-      --expires-in-minutes 5 --single-use true) || { echo "create-card rejected — endpoint not enabled for this account"; exit 1; }
+      --expires-in-minutes 5 --single-use true 2>&1) \
+      || { echo "create-card rejected — endpoint not enabled for this account:"; echo "$OUT"; exit 1; }
     CID=$(grep -oE "\"(card_)?id\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" <<<"$OUT" | head -1 | sed -E "s/.*:[[:space:]]*\"([^\"]+)\"/\1/")
-    [[ -n "$CID" ]] || { echo "no card id in create-card output"; exit 1; }
+    [[ -n "$CID" ]] || { echo "create-card succeeded but no card id found in output:"; echo "$OUT"; exit 1; }
     npx -y @joinmeow/cli revoke-card --api-key "$MEOW_API_TOKEN" --card-id "$CID" \
       || echo "revoke failed — probe card self-expires in 5 min"'
 else

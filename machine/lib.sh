@@ -42,11 +42,14 @@ load_credentials() {
 # check <label> <command...>  — runs command silently, prints ✓/✗, returns status.
 check() {
   local label="$1"; shift
-  if "$@" >/dev/null 2>&1; then
+  local out
+  if out=$("$@" 2>&1); then
     ok "$label"
     return 0
   else
     fail "$label"
+    # Surface the failure reason — a ✗ with no diagnostic is undebuggable.
+    [[ -n "$out" ]] && printf '%s\n' "$out" | tail -n 8 | sed 's/^/      │ /'
     return 1
   fi
 }
