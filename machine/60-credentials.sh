@@ -243,10 +243,12 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
     meow_api GET /cards >/dev/null'
   must "meow REST: card transactions (/cards/transactions)" bash -c "$(declare -f meow_api); "'
     meow_api GET /cards/transactions >/dev/null'
-  # The LIVE create-card schema requires "amount" (whole USD) even though the
-  # published OpenAPI spec omits it — production runs an older schema.
+  # The LIVE create-card schema is OLDER than the published OpenAPI spec: it
+  # requires amount + merchant_name + task_description (the MCP-era shape),
+  # not nickname + spending_controls. Send the union of both schemas so the
+  # probe survives either vintage; unknown fields are ignored.
   must "meow REST: card issuance WRITE path (create + revoke probe card)" bash -c "$(declare -f meow_api); "'
-    OUT=$(meow_api POST /cards "{\"nickname\":\"fb-verify-probe\",\"amount\":1,\"spending_controls\":{\"per_transaction_limit\":1},\"single_use\":true,\"purpose\":\"preflight write-path probe — revoked immediately\"}") \
+    OUT=$(meow_api POST /cards "{\"nickname\":\"fb-verify-probe\",\"amount\":1,\"merchant_name\":\"FounderBench verify\",\"task_description\":\"preflight write-path probe — revoked immediately\",\"spending_controls\":{\"per_transaction_limit\":1},\"single_use\":true,\"purpose\":\"preflight write-path probe — revoked immediately\"}") \
       || { echo "card create rejected:"; echo "$OUT"; exit 1; }
     CID=$(jq -r ".metadata.card_id // .card_id // .id // empty" <<<"$OUT")
     [[ -n "$CID" ]] || { echo "card created but no id in response:"; echo "$OUT"; exit 1; }

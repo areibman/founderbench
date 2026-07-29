@@ -55,15 +55,18 @@ curl -s "${auth[@]}" "$MEOW/cards" | jq                    # list cards
 curl -s "${auth[@]}" "$MEOW/cards/transactions" | jq       # card transactions
 curl -s "${auth[@]}" "$MEOW/cards/$CARD_ID/limits" | jq    # limits + remaining
 
-# Create a virtual card. Required: nickname (≤30 chars), amount (WHOLE USD —
-# the live API requires it even though the published docs omit it), and
-# spending_controls.per_transaction_limit (WHOLE DOLLARS).
+# Create a virtual card. CAUTION: the LIVE schema is older than the published
+# docs — it requires amount (USD), merchant_name, and task_description, while
+# the docs describe nickname + spending_controls. Send the union of both;
+# unknown fields are ignored. If a 400 names a missing field, add it and retry.
 # single_use defaults to true (auto-revokes after first authorization).
-# The new card's id is at .metadata.card_id in the response.
+# The card id is at .metadata.card_id (or .card_id) in the response.
 curl -s "${auth[@]}" -H "Content-Type: application/json" \
   -X POST "$MEOW/cards" -d '{
     "nickname": "meta-ads-jul",
     "amount": 50,
+    "merchant_name": "Meta Ads",
+    "task_description": "Meta ads budget for July",
     "spending_controls": { "per_transaction_limit": 50, "monthly_limit": 100 },
     "single_use": false,
     "purpose": "Meta ads budget for July"
