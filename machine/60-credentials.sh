@@ -247,13 +247,31 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
   # requires amount + merchant_name + task_description (the MCP-era shape),
   # not nickname + spending_controls. Send the union of both schemas so the
   # probe survives either vintage; unknown fields are ignored.
-  must "meow REST: card issuance WRITE path (create + revoke probe card)" bash -c "$(declare -f meow_api); "'
+  must "meow REST: card issuance WRITE path (create + PAN reveal + revoke)" bash -c "$(declare -f meow_api); "'
     OUT=$(meow_api POST /cards "{\"nickname\":\"fb-verify-probe\",\"amount\":1,\"merchant_name\":\"FounderBench verify\",\"task_description\":\"preflight write-path probe — revoked immediately\",\"spending_controls\":{\"per_transaction_limit\":1},\"single_use\":true,\"purpose\":\"preflight write-path probe — revoked immediately\"}") \
       || { echo "card create rejected:"; echo "$OUT"; exit 1; }
     CID=$(jq -r ".metadata.card_id // .card_id // .id // empty" <<<"$OUT")
     [[ -n "$CID" ]] || { echo "card created but no id in response:"; echo "$OUT"; exit 1; }
+    # PAN reveal is what makes a card usable at checkout — verify the full
+    # two-step flow (claim grant, then GET reveal_url with the bearer token)
+    # before revoking. Only presence is checked; the PAN itself is not logged.
+    PANFAIL=""
+    GRANT=$(meow_api POST "/cards/$CID/pan") || PANFAIL="pan claim rejected: $GRANT"
+    if [[ -z "$PANFAIL" ]]; then
+      RURL=$(jq -r ".reveal_url // empty" <<<"$GRANT")
+      RTOK=$(jq -r ".reveal_token // empty" <<<"$GRANT")
+      if [[ -n "$RURL" && -n "$RTOK" ]]; then
+        PAN=$(curl -s --max-time 20 -H "x-api-key: $MEOW_API_TOKEN" \
+          -H "Authorization: Bearer $RTOK" "$RURL")
+        jq -e ".card_number and .cvc" <<<"$PAN" >/dev/null \
+          || PANFAIL="reveal_url returned no card_number/cvc: $(jq -c "keys? // ." <<<"$PAN")"
+      else
+        PANFAIL="pan claim returned no reveal_url/reveal_token: $GRANT"
+      fi
+    fi
     meow_api POST "/cards/$CID/revoke" >/dev/null \
-      || echo "revoke failed — probe card is single-use with a \$1 limit; revoke manually: POST /cards/$CID/revoke"'
+      || echo "revoke failed — probe card is single-use with a \$1 limit; revoke manually: POST /cards/$CID/revoke"
+    [[ -z "$PANFAIL" ]] || { echo "$PANFAIL"; exit 1; }'
 else
   fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow REST API with this key (dashboard-issued, x-api-key header)"; FAILURES=$((FAILURES+1))
 fi

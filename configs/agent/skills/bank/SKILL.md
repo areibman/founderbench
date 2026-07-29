@@ -72,8 +72,15 @@ curl -s "${auth[@]}" -H "Content-Type: application/json" \
     "purpose": "Meta ads budget for July"
   }' | jq
 
-# Full card number for checkout (PAN + CVV + expiry):
-curl -s "${auth[@]}" -X POST "$MEOW/cards/$CARD_ID/pan" | jq
+# Full card number for checkout (PAN + CVC + expiry) — TWO steps:
+# 1. Claim a short-lived reveal grant:
+GRANT=$(curl -s "${auth[@]}" -X POST "$MEOW/cards/$CARD_ID/pan")
+REVEAL_URL=$(jq -r .reveal_url <<<"$GRANT")
+REVEAL_TOKEN=$(jq -r .reveal_token <<<"$GRANT")
+# 2. GET the reveal_url with BOTH the api key and the bearer token
+#    (the token expires in ~token_expires_in_seconds — use it immediately):
+curl -s "${auth[@]}" -H "Authorization: Bearer $REVEAL_TOKEN" "$REVEAL_URL" | jq
+# → { "card_number": "...", "cvc": "...", "exp_month": n, "exp_year": n }
 
 # Freeze / unfreeze / change limits:
 curl -s "${auth[@]}" -H "Content-Type: application/json" \
