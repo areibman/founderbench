@@ -106,6 +106,35 @@ if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
     curl -sf --max-time 20 -X DELETE \
       "https://graph.facebook.com/$GV/$CID" \
       -H "Authorization: Bearer $META_ACCESS_TOKEN" >/dev/null'
+  # Campaign creation succeeds even in Development Mode; the wall pilot 2 hit
+  # is at the CREATIVE stage — dev-mode apps cannot create public Page content,
+  # so no eligible post exists to attach an ad to. Probe an inline (unpublished)
+  # creative against the first Page; delete it after. Needs a Page id.
+  META_PROBE_PAGE="${META_PAGE_IDS%%,*}"
+  if [[ -n "$META_PROBE_PAGE" ]]; then
+    must "Meta Ads: CREATIVE path (page post eligibility — the dev-mode wall)" bash -c '
+      GV="${META_GRAPH_API_VERSION:-v25.0}"
+      ACCT="${META_AD_ACCOUNT_ID:-}"
+      if [[ -z "$ACCT" ]]; then
+        ACCT=$(curl -sf --max-time 20 \
+          "https://graph.facebook.com/$GV/me/adaccounts?fields=id&limit=1" \
+          -H "Authorization: Bearer $META_ACCESS_TOKEN" | jq -r ".data[0].id // empty")
+      fi
+      PAGE="'"$META_PROBE_PAGE"'"
+      SPEC=$(jq -nc --arg p "$PAGE" "{page_id:\$p,link_data:{link:\"https://www.apple.com/app-store/\",message:\"founderbench verify probe\"}}")
+      RESP=$(curl -sf --max-time 30 -X POST \
+        "https://graph.facebook.com/$GV/$ACCT/adcreatives" \
+        -H "Authorization: Bearer $META_ACCESS_TOKEN" \
+        --data-urlencode "name=founderbench-verify-creative-probe" \
+        --data-urlencode "object_story_spec=$SPEC") || { echo "creative create rejected — app is still in Development Mode (flip to Live: Privacy Policy URL + App Icon + Category in App Settings)"; exit 1; }
+      CRID=$(jq -r ".id // empty" <<<"$RESP")
+      [[ -n "$CRID" ]] || { echo "creative create returned no id: $RESP"; exit 1; }
+      curl -sf --max-time 20 -X DELETE \
+        "https://graph.facebook.com/$GV/$CRID" \
+        -H "Authorization: Bearer $META_ACCESS_TOKEN" >/dev/null || true'
+  else
+    warn "META_PAGE_IDS not set — creative-path probe skipped; the dev-mode wall is NOT verified"
+  fi
 else
   warn "META_ACCESS_TOKEN not set — Meta is OUT of the tool surface this block (also remove the meta-ads skill + charter mention)"
 fi
