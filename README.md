@@ -15,7 +15,7 @@ founderbench/
   machine/            # Mac mini appliance scripts (bash, idempotent, numbered)
   orchestrator/       # TypeScript daemon: run lifecycle, heartbeat, OpenCode client
   tracing/            # LLM interception proxy + event collectors + JSONL trace store
-  tools/              # CLI tool wrappers (RevenueCat, Fastmail JMAP) + tool surface docs
+  tools/              # tool surface docs + any orchestrator-side CLI wrappers
   configs/            # run configs (TOML), credentials template, agent workspace template
   runs/               # (gitignored) per-run artifacts: traces, screenshots, logs
   replay/             # minimal web UI to browse a run's trace
@@ -76,13 +76,13 @@ orchestrator (launchd, KeepAlive)
 
 | Surface | Transport | Notes |
 | --- | --- | --- |
-| meow.com banking | `meow` CLI (`--api-key $MEOW_API_TOKEN`) | entities, balances, transactions, virtual cards |
-| Meta Ads | shell → `graph.facebook.com` (`$META_ACCESS_TOKEN`) | Marketing API |
+| meow.com banking | REST (`https://api.meow.com/v1`, `x-api-key: $MEOW_API_TOKEN`) | balances, transactions, transfers, virtual cards. Key restricted to one account per agent |
+| Stripe payments | REST API (`$STRIPE_API_KEY`) | live, KYB-complete account per agent; payment links, invoices, subscriptions |
+| Inkbox | `inkbox` CLI + REST (`https://inkbox.ai/api/v1`, `X-API-Key`) | agent identity: mailbox, credential vault with TOTP, public HTTPS tunnel |
+| Browser | `playwriter` CLI | real local Chrome; the universal escape hatch |
+| Browser (fallback) | Browserbase REST (`https://api.browserbase.com/v1`, `X-BB-API-Key`) | cloud Chromium with automatic CAPTCHA solving |
 | Exa web search | remote MCP (`https://mcp.exa.ai/mcp`) | research |
-| Fastmail | remote MCP (`https://api.fastmail.com/mcp`) | agent's own mailbox, send scope |
-| xcmcp (Xcode/simulators) | local MCP | build/test/sim, toolset-gated |
-| App Store Connect + Apple Ads | `asc` CLI + skills | CLI-first, zero standing context |
-| Browser | `agent-browser` CLI | authenticated web automation |
-| RevenueCat | `tools/revenuecat.sh` | MRR, churn, offerings |
+| Native macOS GUI | `peekaboo` CLI, `vncdotool` | full desktop control; VNC for dialogs AX cannot reach |
+| iOS (unprovisioned) | `xc`, `xcmcp`, `asc` CLI + skills | installed and usable, but **no** Apple credentials are loaded — an escape hatch, not a lane |
 
 See `tools/README.md` for details and `configs/agent/` for the OpenCode workspace template.

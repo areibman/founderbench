@@ -36,10 +36,24 @@ ok "AGENTS.md ← $CHARTER"
 log "Installing skills → .opencode/skills/"
 mkdir -p "$TARGET/.opencode/skills"
 for skill_dir in "$SRC/skills"/*/; do
+  [[ -f "$skill_dir/SKILL.md" ]] || continue
   name="$(basename "$skill_dir")"
   mkdir -p "$TARGET/.opencode/skills/$name"
   cp "$skill_dir/SKILL.md" "$TARGET/.opencode/skills/$name/SKILL.md"
   ok "skill: $name"
+done
+
+log "Installing vendor skills with skills CLI"
+VENDOR_SKILLS=(
+  "https://inkbox.ai"
+  "remorses/playwriter"
+  "browserbase/skills"
+  "https://docs.stripe.com"
+)
+for source in "${VENDOR_SKILLS[@]}"; do
+  (cd "$TARGET" && npx -y skills add "$source" --agent opencode -y) \
+    && ok "vendor skills: $source" \
+    || warn "vendor skill install failed — retry from $TARGET: npx skills add $source"
 done
 
 log "Symlinking founderbench tools/ into the workspace"

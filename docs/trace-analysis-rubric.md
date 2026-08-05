@@ -46,7 +46,7 @@ You receive some or all of:
    omits: `run.*` lifecycle (start/state/nudge/restart/end, with the full run
    config inside `run.start`), `env.*` (GUI dialogs, errors, preflight),
    `git.commit`, `metrics.snapshot` (periodic ground-truth probes: git head,
-   public IP, unread support mail, RevenueCat overview, latest ASC build),
+   public IP, unread mail, bank balance, latest ASC build),
    `budget.update`/`budget.breach`, `harness.permission`, failed model calls
    (non-2xx), and synthetic `analysis.gap` markers for unexplained silences.
 3. **`analysis/run-stats.json`** — precomputed numbers: run duration, counts

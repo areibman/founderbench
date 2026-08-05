@@ -73,9 +73,12 @@ git_head = "git log -1 --oneline"
 # meow's API-key IP allowlist is pinned to this network's egress IP; record it
 # each snapshot so an ISP reassignment is visible in the trace, not silent.
 public_ip = "curl -s --max-time 10 https://api.ipify.org"
-unread_support_mail = "tools/fastmail-jmap.sh unread-count"
-revenuecat_overview = "tools/revenuecat.sh overview"
-asc_latest_build = "asc builds list --app \"$APP_BUNDLE_ID\" --limit 1 2>&1"
+unread_support_mail = "inkbox email unread -i \"$INKBOX_AGENT_HANDLE\" --json 2>&1"
+# Revenue is the outcome measure, so read it from Stripe rather than trusting
+# the agent's own accounting. Balance lags: money can be earned and still sit
+# in `pending` through settlement, so track collected payments too.
+stripe_balance = "curl -s --max-time 10 https://api.stripe.com/v1/balance -u \"$STRIPE_API_KEY:\" 2>&1"
+stripe_collected = "curl -s --max-time 10 'https://api.stripe.com/v1/payment_intents?limit=100' -u \"$STRIPE_API_KEY:\" 2>&1 | jq -c '[.data[]? | select(.status==\"succeeded\")] | {n: length, gross_cents: (map(.amount_received) | add // 0)}'"
 
 # Prompt neutrality: the orchestrator is life support, not a coach. The charter
 # (AGENTS.md) is the task definition; it is stated once at kickoff and never

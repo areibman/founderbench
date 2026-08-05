@@ -1,6 +1,6 @@
 /** Metrics snapshots: run configured shell commands on an interval, capture output
- * into the trace. Commands come from the run config (asc sales, revenuecat overview,
- * bank balance via JMAP/API where available, etc.). */
+ * into the trace. Commands come from the run config (meow balance, Stripe payment
+ * funnel, Inkbox mailbox state, asc sales where available, etc.). */
 import { exec } from "node:child_process";
 import type { TraceStore } from "../../tracing/src/trace.ts";
 import type { BudgetMonitor } from "./budget.ts";

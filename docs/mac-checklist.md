@@ -47,7 +47,9 @@ with snapshot/restore — never a shared login.
 | 2.7 | Homebrew | `brew --version` |
 | 2.8 | git, gh, node, python, ruby, go, jq, xcbeautify, xcodes | `command -v <each>` |
 | 2.9 | `asc` CLI + skills | `asc --version`; skills in `~/.claude/skills/` |
-| 2.10 | `agent-browser` + Chrome for Testing | `agent-browser doctor` |
+| 2.10 | `playwriter` + stock Google Chrome (**not** Chrome for Testing — it fingerprints as a bot) | `playwriter --version`; `ls "/Applications/Google Chrome.app"`; `! ls ~/.playwriter/browsers/chrome-*` |
+| 2.10b | `inkbox` CLI + skills | `inkbox --version`; skills in `~/.claude/skills/` |
+| 2.10c | Stripe API credentials | `curl -s https://api.stripe.com/v1/account -u "$STRIPE_API_KEY:"` |
 | 2.11 | axmcp binaries (axmcp, xcmcp, ax, xc, computer-use-mcp) | `command -v axmcp xcmcp ax xc computer-use-mcp` |
 | 2.11b | Peekaboo (full GUI automation) + permissions | `peekaboo permissions status`; `peekaboo list apps` |
 | 2.12 | OpenCode | `opencode --version` |
@@ -74,31 +76,34 @@ with snapshot/restore — never a shared login.
 
 ## 4. Credentials (each verified live by `machine/60-credentials.sh`)
 
+Every row below is **per-agent** unless marked shareable. Two Macs holding the
+same bank, Stripe, or Inkbox credential silently destroys arm isolation, and
+nothing downstream will catch it.
+
 | # | Credential | Verify with |
 |---|-----------|-------------|
-| 4.1 | ASC API key (key id, issuer id, .p8) | `asc apps list` |
-| 4.2 | Apple team id + bundle id recorded | `credentials.env` |
-| 4.3 | Distribution cert (.p12) imported | checklist 3.7 |
-| 4.4 | Provisioning profiles installed (or ASC-managed) | `ls ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/` |
-| 4.5 | Model API key (Azure OpenAI) | curl chat-completion round trip |
-| 4.6 | Meta Marketing API token + ad account | `machine/60-credentials.sh` reads the configured account via Graph API |
-| 4.7 | RevenueCat secret key | `curl api.revenuecat.com/v2/projects/<id>` |
-| 4.8 | meow bank API key (dashboard-issued REST key; meow.com/dashboard → API keys) | `curl -s -H "x-api-key: $MEOW_API_TOKEN" https://api.meow.com/v1/api-keys/current` |
-| 4.9 | Fastmail account + JMAP token | `curl api.fastmail.com/jmap/session` |
-| 4.10 | Fastmail MCP OAuth at "send" level | `opencode mcp auth list` shows `fastmail` |
-| 4.11 | Exa API key | curl search ping |
-| 4.12 | Spending caps set AT THE ACCOUNT LEVEL (meow, Meta, Apple) | screenshot each account cap into `docs/` |
+| 4.1 | ASC API key — **OPTIONAL, leave empty**; iOS is an unprovisioned escape hatch | skipped when `ASC_KEY_ID` is empty |
+| 4.2 | Distribution cert (.p12) — optional, only if 4.1 is set | checklist 3.7 |
+| 4.3 | Provisioning profiles — optional, only if 4.1 is set | `ls ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/` |
+| 4.5 | Model API key (per-arm model under test) | curl chat-completion round trip |
+| 4.8 | meow bank API key — restricted to **one** account for this agent | `curl -s -H "x-api-key: $MEOW_API_TOKEN" https://api.meow.com/v1/api-keys/current` |
+| 4.9 | Stripe key — this agent's own member account, `sk_live_` (not `sk_org_`, not `rk_`) | `/v1/account` shows `charges_enabled` and empty `requirements.currently_due` |
+| 4.10 | Inkbox key — agent-scoped, plus `INKBOX_VAULT_KEY` and `INKBOX_AGENT_HANDLE` | `/api-keys/self` has a `scoped_identity_id`; `/identities` returns exactly 1, matching the handle |
+| 4.11 | Exa API key (shareable) | curl search ping |
+| 4.13 | Browserbase key + project id (shareable) | session create then `REQUEST_RELEASE` |
+| 4.14 | Spending caps set AT THE ACCOUNT LEVEL (meow, Stripe, model provider) | screenshot each account cap into `docs/` |
 
 ## 5. End-to-end proof (all non-interactive; any dialog = failure)
 
 | # | Item | Verify with |
 |---|------|-------------|
-| 5.1 | App checkout at `APP_REPO_DIR` | `test -d "$APP_REPO_DIR/.git"` |
-| 5.2 | Build for simulator | `xcodebuild build` |
-| 5.3 | Tests on simulator | `xcodebuild test` |
-| 5.4 | Simulator boots + screenshot | `simctl boot` + `simctl io screenshot` |
-| 5.5 | Signed archive | `xcodebuild archive` |
-| 5.6 | Export + TestFlight upload | `xcodebuild -exportArchive` + `asc builds upload` |
+| 5.1 | Xcode checkout under `~/work` — **normally absent**; 5.2-5.6 skip when it is | `ls -d ~/work/*/.git` |
+| 5.2 | Build for simulator (only if 5.1) | `xcodebuild build` |
+| 5.3 | Tests on simulator (only if 5.1) | `xcodebuild test` |
+| 5.4 | Simulator boots + screenshot (only if 5.1) | `simctl boot` + `simctl io screenshot` |
+| 5.5 | Signed archive (only if signing credentials exist) | `xcodebuild archive` |
+| 5.6 | Export + TestFlight upload (only if signing credentials exist) | `xcodebuild -exportArchive` + `asc builds upload` |
+| 5.9 | Playwriter drives stock Chrome over CDP and navigates a page | `playwriter browser start "<chrome>"` + `session new --direct` + `page.goto`; UA must not contain `HeadlessChrome` |
 | 5.7 | OpenCode headless serves + health | `curl :4096/global/health` |
 | 5.8 | All MCPs list tools | `opencode mcp list` (all connected) |
 

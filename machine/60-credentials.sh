@@ -20,33 +20,40 @@ should() {  # optional check — warns but doesn't fail the stage
   check "$1" "${@:2}" || warn "  (optional) $1 failed"
 }
 
-log "── Apple / App Store Connect ──"
+log "── Apple / App Store Connect (OPTIONAL — unprovisioned escape hatch) ──"
+# iOS is no longer a provisioned lane. The toolchain (xcode, xcodebuild, asc,
+# xcmcp) stays installed so an agent that decides an app is the right move can
+# still build one, but we do not hand it App Store credentials or assume it
+# wants them. Empty ASC_* is the expected default and must not fail the Mac.
 asc_env() {
   export ASC_KEY_ID ASC_ISSUER_ID
   export ASC_PRIVATE_KEY_PATH
 }
 if [[ -n "${ASC_KEY_ID:-}" && -f "${ASC_PRIVATE_KEY_PATH/#\~/$HOME}" ]]; then
   asc_env
-  must "asc: App Store Connect API reachable (asc apps list)" \
+  should "asc: App Store Connect API reachable (asc apps list)" \
     asc apps list --limit 1
 else
-  fail "ASC_KEY_ID/ASC_PRIVATE_KEY_PATH not configured"; FAILURES=$((FAILURES+1))
+  log "  ASC_* not set — skipping (iOS is an escape hatch this block, not a lane)"
 fi
 
-log "── Signing ──"
+log "── Signing (OPTIONAL — only meaningful if iOS is provisioned) ──"
 # Two supported modes:
 #   p12 mode   — APPLE_CERT_P12 set: a distribution identity must live in the
 #                build keychain (imported by stage 50).
 #   cloud mode — no p12: xcodebuild signs via the ASC API key
 #                (-allowProvisioningUpdates -authenticationKey*). Requires an
-#                Admin-role key. APPLE_TEAM_ID is optional — the agent (or the
-#                Xcode project) can resolve it; we only gate on the ASC key.
+#                Admin-role key.
+# With neither configured the agent can still build and run in the simulator;
+# it just cannot ship to a device or TestFlight.
 if [[ -n "${APPLE_CERT_P12:-}" ]]; then
-  must "codesigning identity present in build keychain (p12 mode)" \
+  should "codesigning identity present in build keychain (p12 mode)" \
     bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -q "valid identities found" && ! security find-identity -v -p codesigning founderbench.keychain-db | grep -q "0 valid"'
-else
-  must "cloud signing prerequisites (no p12: ASC key + .p8 on disk)" \
+elif [[ -n "${ASC_KEY_ID:-}" ]]; then
+  should "cloud signing prerequisites (no p12: ASC key + .p8 on disk)" \
     bash -c '[[ -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" && -f "${ASC_PRIVATE_KEY_PATH/#\~/$HOME}" ]]'
+else
+  log "  no p12 and no ASC key — simulator builds only, no device or TestFlight distribution"
 fi
 
 log "── Model provider ──"
@@ -63,136 +70,124 @@ else
   fail "MODEL_API_KEY/MODEL_UPSTREAM_URL/MODEL_ID not set"; FAILURES=$((FAILURES+1))
 fi
 
-log "── RevenueCat ──"
-if [[ -n "${REVENUECAT_API_KEY:-}" && -n "${REVENUECAT_PROJECT_ID:-}" ]]; then
-  must "RevenueCat: project readable" \
-    curl -sf --max-time 15 "https://api.revenuecat.com/v2/projects/$REVENUECAT_PROJECT_ID" \
-      -H "Authorization: Bearer $REVENUECAT_API_KEY"
+log "── Browserbase (cloud browsers — CAPTCHA fallback) ──"
+# Create a session and release it immediately. A key that authenticates but
+# cannot start a session (wrong project, plan lapsed, concurrency exhausted) is
+# exactly the failure we need to catch before a run, not during one.
+if [[ -n "${BROWSERBASE_API_KEY:-}" && -n "${BROWSERBASE_PROJECT_ID:-}" ]]; then
+  must "Browserbase: session create + release" bash -c '
+    RESP=$(curl -s --max-time 45 -X POST "https://api.browserbase.com/v1/sessions" \
+      -H "X-BB-API-Key: $BROWSERBASE_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{\"projectId\":\"$BROWSERBASE_PROJECT_ID\",\"timeout\":60}")
+    SID=$(jq -r ".id // empty" <<<"$RESP")
+    if [[ -z "$SID" ]]; then
+      echo "session create rejected:"; echo "$RESP"; exit 1
+    fi
+    jq -e ".connectUrl" <<<"$RESP" >/dev/null || { echo "session has no connectUrl:"; echo "$RESP"; exit 1; }
+    curl -s --max-time 20 -X POST "https://api.browserbase.com/v1/sessions/$SID" \
+      -H "X-BB-API-Key: $BROWSERBASE_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{\"status\":\"REQUEST_RELEASE\"}" >/dev/null \
+      || echo "release failed — session $SID will bill until its 60s timeout"'
+  # Proxies are the main IP-reputation unblocker and they are plan-gated: a free
+  # account 402s here. Report it at preflight rather than letting the agent
+  # discover mid-run that its one escape route is billing-locked.
+  should "Browserbase: residential proxies available on this plan" bash -c '
+    RESP=$(curl -s --max-time 45 -X POST "https://api.browserbase.com/v1/sessions" \
+      -H "X-BB-API-Key: $BROWSERBASE_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{\"projectId\":\"$BROWSERBASE_PROJECT_ID\",\"timeout\":60,\"proxies\":true}")
+    SID=$(jq -r ".id // empty" <<<"$RESP")
+    if [[ -z "$SID" ]]; then
+      echo "proxies unavailable: $(jq -r ".message // ." <<<"$RESP")"
+      echo "the agent gets a clean cloud IP but cannot change country or"
+      echo "rotate away from a blocked address. Upgrade the plan to enable."
+      exit 1
+    fi
+    curl -s --max-time 20 -X POST "https://api.browserbase.com/v1/sessions/$SID" \
+      -H "X-BB-API-Key: $BROWSERBASE_API_KEY" -H "Content-Type: application/json" \
+      -d "{\"status\":\"REQUEST_RELEASE\"}" >/dev/null || true'
 else
-  warn "REVENUECAT_API_KEY/PROJECT_ID not set (required before pilot, optional for machine setup)"
+  warn "BROWSERBASE_API_KEY/PROJECT_ID not set — the CAPTCHA fallback is OUT of the tool surface this block (also remove the browserbase skill + charter mention)"
 fi
 
-log "── Meta Ads (direct Graph API) ──"
-# Token optional as of run block 2: pilot 1 hit a dev-mode/access wall the read
-# probe below never caught (listing ad accounts worked; every write was
-# rejected). If Meta is provisioned it must now prove WRITE capability —
-# create a PAUSED campaign, then delete it — because that is what the agent
-# actually needs. If Meta is deliberately out of the tool surface for this
-# block, leave META_ACCESS_TOKEN unset AND remove the meta-ads skill + charter
-# mention so the agent isn't handed a dead affordance.
-if [[ -n "${META_ACCESS_TOKEN:-}" ]]; then
-  must "Meta Ads: token can list ad accounts" \
-    curl -sf --max-time 20 \
-      "https://graph.facebook.com/${META_GRAPH_API_VERSION:-v25.0}/me/adaccounts?fields=id,name&limit=1" \
-      -H "Authorization: Bearer $META_ACCESS_TOKEN"
-  # Reads working while every write 404s (code 100 / subcode 33) is the
-  # signature of a token missing ads_management. Check the scope by name so
-  # the failure is self-diagnosing instead of a mystery downstream.
-  must "Meta Ads: token has ads_management scope" bash -c '
-    GV="${META_GRAPH_API_VERSION:-v25.0}"
-    RESP=$(curl -s --max-time 20 \
-      "https://graph.facebook.com/$GV/debug_token?input_token=$META_ACCESS_TOKEN&access_token=$META_ACCESS_TOKEN")
-    SCOPES=$(jq -r ".data.scopes // [] | join(\", \")" <<<"$RESP")
-    if ! grep -q "ads_management" <<<"$SCOPES"; then
-      echo "token is missing ads_management — regenerate it with ads_management (+ business_management, pages_read_engagement for the creative path)."
-      echo "granted scopes: ${SCOPES:-none/unreadable}"
-      jq -c ".error // empty" <<<"$RESP"
+log "── Inkbox (agent identity: email, vault, tunnel) ──"
+# Per-agent isolation proof, same shape as the meow one-account assertion: an
+# agent-scoped key sees only its own identity, so /identities returning
+# anything other than exactly one means an admin-scoped key leaked onto this
+# Mac and the agent can read and act as its siblings.
+if [[ -n "${INKBOX_API_KEY:-}" ]]; then
+  must "Inkbox: key valid (/api-keys/self) and agent-scoped" bash -c '
+    RESP=$(curl -s --max-time 20 "https://inkbox.ai/api/v1/api-keys/self" \
+      -H "X-API-Key: $INKBOX_API_KEY")
+    jq -e ".scoped_identity_id // empty" <<<"$RESP" >/dev/null || {
+      echo "this key is NOT agent-scoped (scoped_identity_id is null) — it is an"
+      echo "admin key with org-wide authority. Mint an agent-scoped key bound to"
+      echo "this Mac'\''s identity and use that instead."
+      echo "$RESP"
       exit 1
-    fi'
-  must "Meta Ads: WRITE path (create+delete PAUSED probe campaign)" bash -c '
-    GV="${META_GRAPH_API_VERSION:-v25.0}"
-    # All accounts the token can actually reach — used both for discovery and
-    # to catch a stale/mistyped META_AD_ACCOUNT_ID (subcode-33 "does not
-    # exist" errors on writes are usually this, not a permissions wall).
-    REACHABLE=$(curl -s --max-time 20 \
-      "https://graph.facebook.com/$GV/me/adaccounts?fields=id,name,account_status&limit=25" \
-      -H "Authorization: Bearer $META_ACCESS_TOKEN")
-    ACCT="${META_AD_ACCOUNT_ID:-}"
-    if [[ -z "$ACCT" ]]; then
-      ACCT=$(jq -r ".data[0].id // empty" <<<"$REACHABLE")
-    elif ! jq -e --arg a "$ACCT" ".data[]? | select(.id == \$a)" <<<"$REACHABLE" >/dev/null; then
-      # NB: keep this jq out of a nested "$(...)" — bash brace-expands {a,b}
-      # inside that quoting context and shreds the program.
-      ACCTS_SUMMARY=$(jq -c "[.data[]? | {id: .id, name: .name, account_status: .account_status}]" <<<"$REACHABLE")
-      echo "META_AD_ACCOUNT_ID=$ACCT is NOT among the accounts this token can reach — fix the env var (or the token user needs a role on that account)."
-      echo "reachable accounts: $ACCTS_SUMMARY"
+    }'
+  # GET /identities returns a bare array; an agent-scoped key sees only its own
+  # identity plus any explicitly granted to it. More than one means this Mac can
+  # read and act as a sibling arm.
+  must "Inkbox: identities — exactly 1 visible, and it is \$INKBOX_AGENT_HANDLE" bash -c '
+    IDS=$(curl -s --max-time 20 "https://inkbox.ai/api/v1/identities" \
+      -H "X-API-Key: $INKBOX_API_KEY")
+    N=$(jq -r "if type == \"array\" then length else -1 end" <<<"$IDS" 2>/dev/null || echo -1)
+    if [[ "$N" != "1" ]]; then
+      echo "expected exactly 1 visible identity, got: $N"
+      echo "sibling agents are reachable — per-arm isolation is broken."
+      jq -c "[.[]? | {handle: .agent_handle, email: .email_address}]" <<<"$IDS" 2>/dev/null || echo "$IDS"
       exit 1
     fi
-    [[ -n "$ACCT" ]] || { echo "no ad account discoverable"; exit 1; }
-    create_campaign() {
-      curl -s --max-time 30 -X POST \
-        "https://graph.facebook.com/$GV/$ACCT/campaigns" \
-        -H "Authorization: Bearer $META_ACCESS_TOKEN" \
-        -d "name=founderbench-verify-probe" \
-        -d "objective=$1" \
-        -d "status=PAUSED" \
-        -d "special_ad_categories=[]"
-    }
-    delete_obj() {
-      curl -s --max-time 20 -X DELETE "https://graph.facebook.com/$GV/$1" \
-        -H "Authorization: Bearer $META_ACCESS_TOKEN" >/dev/null
-    }
-    RESP=$(create_campaign OUTCOME_APP_PROMOTION)
-    CID=$(jq -r ".id // empty" <<<"$RESP")
-    if [[ -z "$CID" ]]; then
-      # Distinguish an objective-specific rejection from a blanket write wall.
-      RESP2=$(create_campaign OUTCOME_TRAFFIC)
-      CID2=$(jq -r ".id // empty" <<<"$RESP2")
-      if [[ -n "$CID2" ]]; then
-        delete_obj "$CID2"
-        echo "OUTCOME_APP_PROMOTION rejected but OUTCOME_TRAFFIC works — objective-specific block (likely no promotable app on the account), not a write wall."
-        echo "Graph error for APP_PROMOTION: $(jq -c ".error // ." <<<"$RESP")"
-      else
-        echo "campaign create rejected for BOTH objectives — write wall (dev mode / access tier / token scope)."
-        echo "Graph error: $(jq -c ".error // ." <<<"$RESP")"
-      fi
+    GOT=$(jq -r ".[0].agent_handle" <<<"$IDS")
+    if [[ -n "${INKBOX_AGENT_HANDLE:-}" && "$GOT" != "${INKBOX_AGENT_HANDLE#@}" ]]; then
+      echo "key is bound to \"$GOT\" but INKBOX_AGENT_HANDLE says \"$INKBOX_AGENT_HANDLE\""
+      echo "this Mac was provisioned with another arm'\''s credentials."
       exit 1
     fi
-    delete_obj "$CID"'
-  # Campaign creation succeeds even in Development Mode; the wall pilot 2 hit
-  # is at the CREATIVE stage — dev-mode apps cannot create public Page content,
-  # so no eligible post exists to attach an ad to. Probe an inline (unpublished)
-  # creative against the first Page; delete it after. Needs a Page id.
-  META_PROBE_PAGE="${META_PAGE_IDS%%,*}"
-  if [[ -n "$META_PROBE_PAGE" ]]; then
-    must "Meta Ads: CREATIVE path (page post eligibility — the dev-mode wall)" bash -c '
-      GV="${META_GRAPH_API_VERSION:-v25.0}"
-      ACCT="${META_AD_ACCOUNT_ID:-}"
-      if [[ -z "$ACCT" ]]; then
-        ACCT=$(curl -sf --max-time 20 \
-          "https://graph.facebook.com/$GV/me/adaccounts?fields=id&limit=1" \
-          -H "Authorization: Bearer $META_ACCESS_TOKEN" | jq -r ".data[0].id // empty")
-      fi
-      PAGE="'"$META_PROBE_PAGE"'"
-      SPEC=$(jq -nc --arg p "$PAGE" "{page_id:\$p,link_data:{link:\"https://www.apple.com/app-store/\",message:\"founderbench verify probe\"}}")
-      RESP=$(curl -s --max-time 30 -X POST \
-        "https://graph.facebook.com/$GV/$ACCT/adcreatives" \
-        -H "Authorization: Bearer $META_ACCESS_TOKEN" \
-        --data-urlencode "name=founderbench-verify-creative-probe" \
-        --data-urlencode "object_story_spec=$SPEC")
-      CRID=$(jq -r ".id // empty" <<<"$RESP")
-      if [[ -z "$CRID" ]]; then
-        echo "creative create rejected — likely still Development Mode (flip to Live: Privacy Policy URL + App Icon + Category in App Settings)."
-        echo "Graph error: $(jq -c ".error // ." <<<"$RESP")"
-        exit 1
-      fi
-      curl -sf --max-time 20 -X DELETE \
-        "https://graph.facebook.com/$GV/$CRID" \
-        -H "Authorization: Bearer $META_ACCESS_TOKEN" >/dev/null || true'
+    echo "identity: $GOT <$(jq -r ".[0].email_address" <<<"$IDS")>"'
+  must "Inkbox: mailbox reachable (unread listing for \$INKBOX_AGENT_HANDLE)" bash -c '
+    [[ -n "${INKBOX_AGENT_HANDLE:-}" ]] || { echo "INKBOX_AGENT_HANDLE not set — identity-scoped CLI commands need it"; exit 1; }
+    inkbox email unread -i "$INKBOX_AGENT_HANDLE" --json >/dev/null'
+  # The vault is what lets the agent hold its own logins and generate TOTP
+  # codes, which is the difference between "can sign up" and "can sign back in".
+  if [[ -n "${INKBOX_VAULT_KEY:-}" ]]; then
+    must "Inkbox: vault unlocks with INKBOX_VAULT_KEY" \
+      inkbox vault info --json
   else
-    warn "META_PAGE_IDS not set — creative-path probe skipped; the dev-mode wall is NOT verified"
+    warn "INKBOX_VAULT_KEY not set — no credential store or TOTP generation; the agent will lose any account behind 2FA"
   fi
 else
-  warn "META_ACCESS_TOKEN not set — Meta is OUT of the tool surface this block (also remove the meta-ads skill + charter mention)"
+  fail "INKBOX_API_KEY not set — the agent has no mailbox, no vault, and no public URL"; FAILURES=$((FAILURES+1))
 fi
 
-log "── Fastmail (JMAP) ──"
-if [[ -n "${FASTMAIL_JMAP_TOKEN:-}" ]]; then
-  must "Fastmail: JMAP session fetch" \
-    curl -sf --max-time 15 "https://api.fastmail.com/jmap/session" \
-      -H "Authorization: Bearer $FASTMAIL_JMAP_TOKEN"
+log "── Stripe (payment processing) ──"
+# The agent's own account inside the Stripe Organization. charges_enabled with
+# an empty requirements.currently_due is the difference between an account that
+# can take money and one that only looks like it can.
+if [[ -n "${STRIPE_API_KEY:-}" ]]; then
+  case "$STRIPE_API_KEY" in
+    sk_org_*) fail "STRIPE_API_KEY is an ORG key — that grants this agent the whole fleet. Use the member account's own key."; FAILURES=$((FAILURES+1)) ;;
+    rk_*)     warn "STRIPE_API_KEY is a RESTRICTED key — /v1/account may pass while payment_links, invoices, or payouts are silently forbidden mid-run. A standard sk_live_ key for this member account is safer." ;;
+    sk_test_*) warn "STRIPE_API_KEY is a TEST key — the agent can build a checkout that never takes real money. Intentional only for a dry run." ;;
+  esac
+  must "Stripe: account live (charges_enabled, no outstanding requirements)" bash -c '
+    RESP=$(curl -s --max-time 20 "https://api.stripe.com/v1/account" -u "$STRIPE_API_KEY:")
+    jq -e ".id" <<<"$RESP" >/dev/null || { echo "key rejected:"; echo "$RESP"; exit 1; }
+    CHARGES=$(jq -r ".charges_enabled" <<<"$RESP")
+    DUE=$(jq -r "(.requirements.currently_due // []) | length" <<<"$RESP")
+    if [[ "$CHARGES" != "true" || "$DUE" != "0" ]]; then
+      echo "account $(jq -r ".id" <<<"$RESP") is not ready to accept payments:"
+      echo "  charges_enabled: $CHARGES"
+      echo "  requirements.currently_due: $(jq -c ".requirements.currently_due // []" <<<"$RESP")"
+      echo "finish onboarding in the Stripe dashboard before the run — an agent"
+      echo "cannot complete KYB on its own inside the window."
+      exit 1
+    fi'
 else
-  fail "FASTMAIL_JMAP_TOKEN not set"; FAILURES=$((FAILURES+1))
+  fail "STRIPE_API_KEY not set — the agent has no way to charge anyone"; FAILURES=$((FAILURES+1))
 fi
 
 log "── Exa ──"
@@ -213,6 +208,17 @@ log "── meow.com banking (REST API) ──"
 # family the agent depends on, including the card-issuance WRITE path (the
 # probe card is single-use with a $1 per-transaction limit and is revoked
 # immediately).
+#
+# Multi-agent (parallel-Macs) model: every Mac runs a DIFFERENT model and gets
+# its OWN account-restricted key. One shared business entity holds a treasury
+# account plus one checking account per agent; each agent's key is created with
+# "Restrict to one bank account" ON, so the key can only read and initiate
+# transfers from that single account and cannot see or drain a sibling's. The
+# account probe below therefore asserts EXACTLY ONE account is visible — that is
+# the machine-checkable proof the restriction is actually enabled on this key
+# (an unrestricted entity key would return all sibling accounts and silently
+# break per-arm isolation). Seeding each account and sweeping leftovers is done
+# with the treasury/admin key, orchestrator-side, never with this key.
 if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
   meow_api() {  # meow_api <method> <path> [json-body] — fails on non-2xx, prints body
     local METHOD="$1" APIPATH="$2" BODY="${3:-}" RESP CODE
@@ -231,8 +237,19 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
   must "meow REST: key valid + scopes (/api-keys/current)" bash -c "$(declare -f meow_api); "'
     OUT=$(meow_api GET /api-keys/current) || { echo "$OUT"; exit 1; }
     echo "$OUT" | jq -c "{type: (.type // .key_type // \"?\"), scopes: (.scopes // [])}" 2>/dev/null || true'
-  must "meow REST: accounts (/accounts)" bash -c "$(declare -f meow_api); "'
-    meow_api GET /accounts >/dev/null'
+  must "meow REST: accounts (/accounts) — restricted to exactly 1 account" bash -c "$(declare -f meow_api); "'
+    ACCTS=$(meow_api GET /accounts) || { echo "$ACCTS"; exit 1; }
+    # Per-agent keys must be created with "Restrict to one bank account" ON.
+    # Count both response shapes (.accounts[] nested, or flat .data[]).
+    N=$(jq -r "(.accounts // .data // []) | length" <<<"$ACCTS")
+    if [[ "$N" != "1" ]]; then
+      echo "expected exactly 1 visible account (account-restricted key), got: $N"
+      echo "this key is NOT restricted to a single account — sibling agents are"
+      echo "reachable and per-arm isolation is broken. Re-issue the key with"
+      echo "\"Restrict to one bank account\" enabled for this agent'\''s account."
+      jq -c "[(.accounts // .data // [])[] | {id: (.depositAccount.accountId // .id), nickname: (.nickname // .depositAccount.nickname // null)}]" <<<"$ACCTS"
+      exit 1
+    fi'
   must "meow REST: balances (/accounts/{id}/balances)" bash -c "$(declare -f meow_api); "'
     ACCTS=$(meow_api GET /accounts) || { echo "$ACCTS"; exit 1; }
     # /accounts nests the id: .accounts[].depositAccount.accountId (cash_account_...)
@@ -281,33 +298,26 @@ else
   fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow REST API with this key (dashboard-issued, x-api-key header)"; FAILURES=$((FAILURES+1))
 fi
 
-log "── AgentCard (virtual Visa cards) ──"
-# Pilot 1 lesson: AgentCard got de-authed mid-run and nothing had checked it.
-# Auth is a stored login session (agent-cards CLI / AgentCard MCP), not an env
-# credential — if these fail, re-login interactively on this machine
-# (`agent-cards` CLI) and re-auth the MCP, then re-run this stage. Only the
-# non-interactive commands are used here (whoami, cards list).
-if command -v agent-cards >/dev/null 2>&1; then
-  must "agent-cards: session authenticated (whoami)" \
-    agent-cards whoami
-  must "agent-cards: cards endpoint (cards list)" \
-    agent-cards cards list
-else
-  warn "agent-cards CLI not installed — AgentCard is OUT of the tool surface this block (also remove the agent-card skill + charter mention)"
-fi
-
 log "── OAuth-based MCPs (verified in stage 65) ──"
-MCP_AUTH_FILE="$HOME/.local/share/opencode/mcp-auth.json"
-if [[ -f "$MCP_AUTH_FILE" ]]; then
-  for server in fastmail; do
-    if jq -e --arg s "$server" 'has($s)' "$MCP_AUTH_FILE" >/dev/null 2>&1; then
-      ok "opencode mcp auth: $server credentials stored"
-    else
-      warn "opencode mcp auth: $server not yet authorized (run stage 65)"
-    fi
-  done
+# No MCP on the current surface uses OAuth: exa authenticates with a header key
+# and xcmcp/axmcp are local binaries. Stage 65 stays in the pipeline so that
+# adding an OAuth MCP later has a home; this block only reports what is stored.
+OAUTH_MCPS=()
+if [[ ${#OAUTH_MCPS[@]} -eq 0 ]]; then
+  ok "no OAuth MCPs on this surface — nothing to check"
 else
-  warn "no OpenCode MCP auth store yet (run stage 65)"
+  MCP_AUTH_FILE="$HOME/.local/share/opencode/mcp-auth.json"
+  if [[ -f "$MCP_AUTH_FILE" ]]; then
+    for server in "${OAUTH_MCPS[@]}"; do
+      if jq -e --arg s "$server" 'has($s)' "$MCP_AUTH_FILE" >/dev/null 2>&1; then
+        ok "opencode mcp auth: $server credentials stored"
+      else
+        warn "opencode mcp auth: $server not yet authorized (run stage 65)"
+      fi
+    done
+  else
+    warn "no OpenCode MCP auth store yet (run stage 65)"
+  fi
 fi
 
 echo

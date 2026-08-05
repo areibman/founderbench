@@ -74,16 +74,15 @@ cd ~/founderbench && git pull
 
 `configs/pilot-pressure-24h-r2.toml` is the same arm with prompts byte-identical
 to run 1; only the run name and the environment differ (see the config header
-for the block-2 fixes: meow moved to the REST API, AgentCard session gate,
-Meta dev-mode resolution). Launch sequence on the mini:
+for the block-2 fixes).
+Launch sequence on the mini:
 
 ```sh
 cd ~/founderbench && git pull
 
-# 0. Credentials must be green BEFORE launch — this now probes the exact
-#    failure modes that broke run 1 (meow REST endpoints incl. card issuance,
-#    AgentCard auth, Meta write + creative stage). The meow key is a
-#    dashboard-issued REST key (x-api-key); re-login agent-cards if needed.
+# 0. Credentials must be green BEFORE launch — this probes the meow REST
+#    endpoints including card issuance. The meow key is a dashboard-issued
+#    REST key (x-api-key).
 ./machine/verify.sh          # or just: source configs/credentials.env && ./machine/60-credentials.sh
 
 # 1. If the previous run is still resumable, retire it so run-daemon.sh
@@ -95,11 +94,6 @@ touch ~/founderbench/runs/<old-run-id>/COMPLETED
 ./machine/70-agent-workspace.sh "$HOME"
 ./machine/80-install-launchd.sh configs/pilot-pressure-24h-r2.toml
 ```
-
-Meta decision gate: launch only after Meta is either verified working (app
-flipped to Live; creative-stage probe passes) or fully removed from the tool
-surface (`META_ACCESS_TOKEN` unset, meta-ads skill and charter mentions
-removed). A dead affordance in the surface contaminates the arm.
 
 ## After a run
 

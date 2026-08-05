@@ -33,12 +33,45 @@ v "SSH enabled"                        bash -c 'systemsetup -getremotelogin 2>/d
 v "GUI console session owned by us"    bash -c '[[ "$(stat -f%Su /dev/console)" == "$(whoami)" ]]'
 
 log "══ 2. Toolchain ══"
-for c in git gh node go jq xcbeautify xcodes asc agent-browser opencode peekaboo; do
+for c in git gh node go jq xcbeautify xcodes asc opencode peekaboo playwriter inkbox; do
   v "cli: $c" command -v "$c"
 done
 for c in axmcp xcmcp ax xc computer-use-mcp; do
   v "cli: $c" bash -c "command -v $c || command -v \$HOME/go/bin/$c"
 done
+# Live browser proof. CLI presence is not enough, and neither is the easy
+# headless path: `session new --browser headless` runs Chrome for Testing, whose
+# binary and user-agent get fingerprinted as a bot, so we refuse it. What has to
+# work is stock Google Chrome launched with remote debugging (`browser start`)
+# and attached over CDP (`session new --direct`), which needs no extension and
+# therefore no human clicking a toolbar icon.
+#
+# Three things can break independently, so prove all of them: Chrome is the real
+# build (not Chrome for Testing), the relay on 127.0.0.1:19988 comes up inside
+# this process tree (under launchd there is no Terminal session to inherit), and
+# a page actually loads and reports its title back.
+v "Google Chrome present (stock build, not Chrome for Testing)" bash -c '
+  [[ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]]'
+v "no Chrome for Testing on disk (bot-detection tell)" bash -c '
+  ! compgen -G "$HOME/.playwriter/browsers/chrome-*" >/dev/null 2>&1'
+v "playwriter: real-Chrome CDP session + navigation + relay" bash -c '
+  CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  playwriter browser start "$CHROME" --user-data-dir "$HOME/.playwriter/fb-profile" >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do nc -z 127.0.0.1 9222 >/dev/null 2>&1 && break; sleep 1; done
+  nc -z 127.0.0.1 9222 >/dev/null 2>&1 || { echo "Chrome did not expose a CDP port after browser start"; exit 1; }
+  UA=$(curl -s --max-time 5 http://127.0.0.1:9222/json/version | jq -r ".\"User-Agent\" // empty")
+  case "$UA" in
+    *HeadlessChrome*|*"Chrome for Testing"*) echo "browser advertises a bot user-agent: $UA"; exit 1 ;;
+  esac
+  SID=$(playwriter session new --direct 2>&1 | sed -n "s/^Session \([0-9][0-9]*\) created.*/\1/p" | head -1)
+  [[ -n "$SID" ]] || { echo "could not attach to Chrome over CDP (session new --direct)"; exit 1; }
+  JS="const p = await context.newPage(); await p.goto(\"https://example.com\"); console.log(\"FB_TITLE:\" + (await p.title())); await p.close()"
+  OUT=$(playwriter -s "$SID" -e "$JS" 2>&1)
+  playwriter session delete "$SID" >/dev/null 2>&1 || true
+  grep -q "FB_TITLE:Example Domain" <<<"$OUT" || { echo "navigation failed:"; echo "$OUT"; exit 1; }
+  nc -z 127.0.0.1 19988 >/dev/null 2>&1 || { echo "relay is not listening on 127.0.0.1:19988 after a successful session"; exit 1; }
+  echo "UA: $UA"'
+
 v "Xcode selected"                     xcode-select -p
 v "xcodebuild works"                   xcodebuild -version
 v "iOS simulator runtime present"      bash -c 'xcrun simctl list runtimes | grep -q iOS'
@@ -100,16 +133,16 @@ log "══ 4. Credentials (live) ══"
 bash ./60-credentials.sh >/dev/null 2>&1 && { ok "60-credentials.sh passes"; PASS=$((PASS+1)); } \
   || { fail "60-credentials.sh FAILED — run it directly for details"; FAIL=$((FAIL+1)); }
 
-log "══ 5. End-to-end app build proof ══"
-# App location / scheme / team / bundle id are all agent-discoverable. We do not
-# require APP_REPO_DIR. If a checkout is obvious (credentials or a common path),
-# prove the build; otherwise skip — finding/using the app is eval signal.
-SCHEME="${APP_XCODE_SCHEME:-}"
+log "══ 5. iOS build proof (OPTIONAL — no app is provisioned) ══"
+# Agents start from scratch, so at provisioning time there is normally no app
+# here and this whole section skips. That is the expected outcome, not a
+# failure. It still runs when an app does exist — e.g. re-verifying a Mac
+# mid-run, or a deliberately re-provisioned iOS lane — because a toolchain that
+# cannot actually build is worth catching either way.
+SCHEME=""
 HAVE_APP=false
 REPO_DIR=""
-if [[ -n "${APP_REPO_DIR:-}" && -d "${APP_REPO_DIR}/.git" ]]; then
-  REPO_DIR="$APP_REPO_DIR"
-elif [[ -d "$HOME/work/app/.git" ]]; then
+if [[ -d "$HOME/work/app/.git" ]]; then
   REPO_DIR="$HOME/work/app"
 else
   # First git repo under ~/work that looks like an Xcode app.
@@ -126,36 +159,24 @@ fi
 if [[ -n "$REPO_DIR" ]]; then
   ok "app repo: $REPO_DIR"; PASS=$((PASS+1))
   HAVE_APP=true
-elif [[ -n "${APP_REPO_URL:-}" ]]; then
-  REPO_DIR="${APP_REPO_DIR:-$HOME/work/app}"
-  # Optional bootstrap only — never hang on an interactive GitHub prompt.
-  v "app repo: clone" env GIT_TERMINAL_PROMPT=0 git clone "$APP_REPO_URL" "$REPO_DIR"
-  HAVE_APP=true
 else
-  warn "no app checkout found — skipping build proof (agent will locate/use the app)"
+  log "  no Xcode checkout under ~/work — skipping (expected: agents start from scratch)"
 fi
 
 if $HAVE_APP; then
-  # Container: prefer credentials, else discover workspace/project in the repo.
   CONTAINER=()
-  if [[ -n "${APP_XCODE_WORKSPACE:-}" ]]; then
-    CONTAINER=(-workspace "$REPO_DIR/${APP_XCODE_WORKSPACE}")
-  elif [[ -n "${APP_XCODE_PROJECT:-}" ]]; then
-    CONTAINER=(-project "$REPO_DIR/${APP_XCODE_PROJECT}")
+  WS=$(find "$REPO_DIR" -maxdepth 3 -name '*.xcworkspace' ! -path '*/Pods/*' ! -path '*/.swiftpm/*' | head -1)
+  if [[ -n "$WS" ]]; then
+    CONTAINER=(-workspace "$WS")
+    ok "discovered workspace: ${WS#"$REPO_DIR"/}"; PASS=$((PASS+1))
   else
-    WS=$(find "$REPO_DIR" -maxdepth 3 -name '*.xcworkspace' ! -path '*/Pods/*' ! -path '*/.swiftpm/*' | head -1)
-    if [[ -n "$WS" ]]; then
-      CONTAINER=(-workspace "$WS")
-      ok "discovered workspace: ${WS#"$REPO_DIR"/}"; PASS=$((PASS+1))
+    PROJ=$(find "$REPO_DIR" -maxdepth 3 -name '*.xcodeproj' ! -path '*/Pods/*' | head -1)
+    if [[ -n "$PROJ" ]]; then
+      CONTAINER=(-project "$PROJ")
+      ok "discovered project: ${PROJ#"$REPO_DIR"/}"; PASS=$((PASS+1))
     else
-      PROJ=$(find "$REPO_DIR" -maxdepth 3 -name '*.xcodeproj' ! -path '*/Pods/*' | head -1)
-      if [[ -n "$PROJ" ]]; then
-        CONTAINER=(-project "$PROJ")
-        ok "discovered project: ${PROJ#"$REPO_DIR"/}"; PASS=$((PASS+1))
-      else
-        fail "no .xcworkspace/.xcodeproj under $REPO_DIR"; FAIL=$((FAIL+1))
-        HAVE_APP=false
-      fi
+      fail "no .xcworkspace/.xcodeproj under $REPO_DIR"; FAIL=$((FAIL+1))
+      HAVE_APP=false
     fi
   fi
 fi
@@ -167,7 +188,7 @@ if $HAVE_APP; then
     if [[ -n "$SCHEME" ]]; then
       ok "discovered scheme: $SCHEME"; PASS=$((PASS+1))
     else
-      fail "could not discover an Xcode scheme (set APP_XCODE_SCHEME or fix the project)"; FAIL=$((FAIL+1))
+      fail "could not discover an Xcode scheme in $REPO_DIR"; FAIL=$((FAIL+1))
       HAVE_APP=false
     fi
   fi
@@ -212,6 +233,15 @@ if $HAVE_APP; then
   TEAM_ARG=""
   [[ -n "$TEAM" ]] && TEAM_ARG="DEVELOPMENT_TEAM=$TEAM"
 
+  # Signed archive and TestFlight upload need real Apple credentials. With iOS
+  # unprovisioned there are none, and simulator build + test above is the whole
+  # proof the toolchain works.
+  CAN_SIGN=false
+  [[ -n "${APPLE_CERT_P12:-}" || -n "${ASC_KEY_ID:-}" ]] && CAN_SIGN=true
+
+  if ! $CAN_SIGN; then
+    log "  no signing credentials — skipping signed archive and TestFlight upload"
+  else
   ARCHIVE="$HOME/work/verify.xcarchive"
   v "xcodebuild: archive (signed)" \
     bash -c "security unlock-keychain -p \"\$FB_KEYCHAIN_PASSWORD\" founderbench.keychain-db && \
@@ -250,6 +280,7 @@ PLIST
   else
     warn "TestFlight upload skipped (--skip-upload)"
   fi
+  fi   # CAN_SIGN
 fi
 
 log "══ 6. Harness smoke ══"

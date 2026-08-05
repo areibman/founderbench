@@ -40,14 +40,35 @@ log "asc agent skills (23 skills for ASC/Apple Ads/release flows)"
 asc install-skills 2>/dev/null && ok "asc skills installed" \
   || warn "asc install-skills failed — retry manually; skills land in ~/.claude/skills (OpenCode discovers them)"
 
-log "agent-browser — browser automation CLI (vercel-labs)"
-brew list agent-browser >/dev/null 2>&1 || brew install agent-browser
-agent-browser install >/dev/null 2>&1 && ok "agent-browser + Chrome for Testing installed" \
-  || warn "agent-browser install (Chrome download) failed; retry: agent-browser install"
+log "playwriter — browser automation CLI (remorses/playwriter)"
+npm install -g playwriter@latest && ok "playwriter $(playwriter --version 2>/dev/null | head -1 || echo installed)" \
+  || warn "npm i -g playwriter failed; the agent can fall back to npx playwriter@latest"
+# Deliberately NOT running `playwriter browser install`. That downloads Chrome
+# for Testing, which is a bot-detection tell: it ships a distinct binary and
+# user-agent that anti-bot vendors fingerprint on sight, so a signup flow that a
+# real Chrome walks through will get flagged. We want stock Google Chrome — the
+# same build a human on this Mac would run — driven over CDP.
+#
+# The chain is: `playwriter browser start <real chrome>` (launches it with remote
+# debugging already enabled) then `playwriter session new --direct` (attaches over
+# CDP, bypassing the extension, so nothing waits on a human clicking the toolbar
+# icon). Headed works here because the box autologins into a real GUI console
+# session; see machine/verify.sh for the live proof of that whole chain.
+log "Google Chrome — stock build for playwriter (never Chrome for Testing)"
+if [[ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]]; then
+  ok "Google Chrome already installed"
+else
+  brew install --cask google-chrome >/dev/null 2>&1 && ok "Google Chrome installed" \
+    || warn "brew install --cask google-chrome failed; playwriter has no stealthy browser until this lands"
+fi
 
-log "agent-browser skill for coding agents"
-npx -y skills add vercel-labs/agent-browser 2>/dev/null && ok "agent-browser skill added" \
-  || warn "skills add vercel-labs/agent-browser failed; retry manually"
+log "browse — Browserbase CLI"
+npm install -g browse && ok "browse $(browse --version 2>/dev/null | head -1 || echo installed)" \
+  || warn "npm i -g browse failed; the browserbase skill card cannot run without it"
+
+log "inkbox — agent identity CLI (@inkbox/cli)"
+npm install -g @inkbox/cli && ok "inkbox $(inkbox --version 2>/dev/null | head -1 || echo installed)" \
+  || warn "npm i -g @inkbox/cli failed; retry manually"
 
 log "axmcp binaries — macOS AX automation + Xcode MCP (tmc/axmcp)"
 export GOPATH="${GOPATH:-$HOME/go}"

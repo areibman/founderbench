@@ -37,11 +37,6 @@
       "oauth": false,
       "enabled": true
     },
-    "fastmail": {
-      "type": "remote",
-      "url": "https://api.fastmail.com/mcp",
-      "enabled": true
-    },
     "xcmcp": {
       "type": "local",
       "command": [
@@ -65,12 +60,12 @@
   "agent": {
     "build": {
       "tools": {
-        "fastmail_*": true
+        "exa_*": true
       }
     },
     "task": {
       "tools": {
-        "fastmail_*": false
+        "exa_*": true
       }
     }
   }
