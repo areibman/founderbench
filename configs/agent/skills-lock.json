@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "skills": {
+    "browser": {
+      "source": "browserbase/skills",
+      "sourceType": "github",
+      "skillPath": "skills/browser/SKILL.md",
+      "computedHash": "1db8101630cecd0782347bf67c9ccc1ab57f6ffe408f527612088ab55a392a5f"
+    },
+    "inkbox-cli": {
+      "source": "inkbox.ai",
+      "sourceType": "well-known",
+      "computedHash": "017bd43a99d33b6413937c80928fe393763e2233a60b2173a96d76c5c08aecfd"
+    },
+    "playwriter": {
+      "source": "remorses/playwriter",
+      "sourceType": "github",
+      "skillPath": "skills/playwriter/SKILL.md",
+      "computedHash": "7f21ea41d9c81f3b43fe0f3de6c95d4187594a310c9b1892c11b1f5a26c4b925"
+    },
+    "stripe-best-practices": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "a451d254337620a077b44bf3fc7bdf77f99a61a62af6d9ea232fa116068158b3"
+    }
+  }
+}

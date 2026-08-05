@@ -21,10 +21,14 @@ MCP calls are traced via the OpenCode SSE `/event` stream (`harness.tool` events
 | meow REST API | none (curl + jq) | bank | meow banking: accounts, balances, transactions, transfers, invoices, **virtual cards** — `https://api.meow.com/v1`, header `x-api-key: $MEOW_API_TOKEN` |
 | `asc` | `brew install asc` + `asc install-skills` | vendor skills (23) | App Store Connect: publish, TestFlight, metadata, reviews, sales, screenshots, **Apple Ads** |
 | `playwriter` | `npm i -g playwriter` + stock Google Chrome cask (never `playwriter browser install`, which pulls bot-flagged Chrome for Testing) | `npx skills add remorses/playwriter` | browser automation driven by Playwright snippets against stock Chrome over CDP |
-| `browse` (Browserbase CLI) | `npm i -g browse` | `npx skills add browserbase/skills` | cloud Chromium with automatic CAPTCHA solving. Fallback when the local browser is blocked |
-| Stripe REST API | none (curl + jq) | `npx skills add https://docs.stripe.com` | payments via `api.stripe.com`, authenticated with `$STRIPE_API_KEY` |
-| `inkbox` | `npm i -g @inkbox/cli` | `npx skills add https://inkbox.ai` | agent identity: mailbox, credential vault with TOTP, public HTTPS tunnel — `https://inkbox.ai/api/v1`, header `X-API-Key` |
+| `browse` (Browserbase CLI) | `npm i -g browse` | `npx skills add browserbase/skills --skill browser` | cloud Chromium with automatic CAPTCHA solving. Fallback when the local browser is blocked |
+| Stripe REST API | none (curl + jq) | `npx skills add https://docs.stripe.com --skill stripe-best-practices` | payments via `api.stripe.com`, authenticated with `$STRIPE_API_KEY` |
+| `inkbox` | `npm i -g @inkbox/cli` | `npx skills add https://inkbox.ai --skill inkbox-cli` | agent identity: mailbox, credential vault with TOTP, public HTTPS tunnel — `https://inkbox.ai/api/v1`, header `X-API-Key` |
 | `xc` | `go install github.com/tmc/axmcp/cmd/xc@latest` | xcode-cli | CLI twin of xcmcp |
+
+The four `skills add` packages are checked into
+`configs/agent/.agents/skills/`; their generated lockfile records provenance
+and hashes. Stage 70 copies those directories into `.opencode/skills/`.
 
 ## Tracing contract
 

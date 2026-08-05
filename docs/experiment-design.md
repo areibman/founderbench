@@ -91,11 +91,12 @@ latency against the deadline, is now signal instead of setup.
   registered but tool-gated off for the agent.
 - **CLIs / APIs**: `inkbox`, `playwriter`, `peekaboo`, `xc`, `asc`, full
   shell; Stripe and meow REST APIs via `curl`, plus the Browserbase CLI.
-- **Skills**: the local tool skills in `configs/agent/skills/` (`bank`,
+- **Skills**: the local tool skills in `configs/agent/.agents/skills/` (`bank`,
   `exa-search`, `computer-use`, `vncdotool`, plus `asc-cli` for the
-  unprovisioned iOS hatch), together with vendor-installed Stripe, Inkbox,
-  Playwriter, and Browserbase skills. Vendor packs are installed with `skills
-  add`; ASC installs its own pack for the unprovisioned iOS hatch.
+  unprovisioned iOS hatch), together with one general Stripe card, the Inkbox
+  CLI card, and the Playwriter and Browserbase browser cards. Vendor skills are
+  installed with `skills add`; ASC installs its own pack for the unprovisioned
+  iOS hatch.
 
 Vendor docs are treated as claims, not facts. Both Browserbase plan-gates in the
 `browserbase` card were verified against the live API rather than the pricing
@@ -132,9 +133,12 @@ agent driving a GUI wants; both read the AX tree independently.
 ## Skills policy: vendor docs, not playbooks
 
 Skills are **named after tools, not tasks** and come directly from each
-vendor's published skill package. Stage 70 installs Inkbox, Playwriter,
-Browserbase, and Stripe with `npx skills add`; ASC installs its own skill pack.
-We do not maintain copied or locally amended versions of those cards.
+vendor's published skill package. We select only `inkbox-cli`,
+`stripe-best-practices`, Playwriter, and Browserbase's `browser` skill. They
+are materialized in `configs/agent/.agents/skills/` with `npx skills add` and
+tracked with `configs/agent/skills-lock.json`; stage 70 copies the complete
+skill directories into the workspace. ASC installs its own skill pack. We do
+not locally amend vendor cards.
 
 Vendor skills contain **no strategy of ours** — no business cadence, no sizing
 rules, no per-cycle checklists. A task-named skill like
