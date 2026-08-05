@@ -218,8 +218,11 @@ __marimo__/
 .streamlit/secrets.toml
 
 # --- FounderBench ---
-# Run artifacts (traces, screenshots, logs)
+# Run / analysis artifacts (traces, screenshots, logs, zip extracts)
 runs/
+artifacts/
+# Machine-specific skill overlays (not the vendored SKILL.md)
+configs/agent/skills/*/local-delta.md
 # Secrets
 credentials.env
 *.p8
@@ -228,4 +231,7 @@ credentials.env
 # Node
 node_modules/
 .vercel
+# OS / editor junk
+.DS_Store
+Thumbs.db
 ~$*
