@@ -34,10 +34,17 @@ curl -s "${auth[@]}" "$MEOW/api-keys/accessible-entities" | jq
 If a call returns 401/403, check `/api-keys/current` first — the key may lack
 the scope for that endpoint. Report exactly which scope is missing.
 
+**This key is restricted to a single checking account — yours.** `GET /accounts`
+returns exactly one account; that is the account you operate from for balances,
+transfers, and card settlement. You cannot see or move money from any other
+account, so there is no account to choose between: take `.accounts[0]` and go.
+
 ## Accounts, balances, transactions
 
 Account ids are nested in the list response:
 `.accounts[].depositAccount.accountId` (they look like `cash_account_<uuid>`).
+With a restricted key the list has one entry, so `.accounts[0]` is always your
+account.
 
 ```bash
 curl -s "${auth[@]}" "$MEOW/accounts" | jq                          # list accounts
@@ -63,13 +70,13 @@ curl -s "${auth[@]}" "$MEOW/cards/$CARD_ID/limits" | jq    # limits + remaining
 # The card id is at .metadata.card_id (or .card_id) in the response.
 curl -s "${auth[@]}" -H "Content-Type: application/json" \
   -X POST "$MEOW/cards" -d '{
-    "nickname": "meta-ads-jul",
+    "nickname": "saas-tooling",
     "amount": 50,
-    "merchant_name": "Meta Ads",
-    "task_description": "Meta ads budget for July",
+    "merchant_name": "Vendor Inc",
+    "task_description": "monthly vendor subscription",
     "spending_controls": { "per_transaction_limit": 50, "monthly_limit": 100 },
     "single_use": false,
-    "purpose": "Meta ads budget for July"
+    "purpose": "monthly vendor subscription"
   }' | jq
 
 # Full card number for checkout (PAN + CVC + expiry). The LIVE API returns it
