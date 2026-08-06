@@ -85,7 +85,8 @@ nothing downstream will catch it.
 | 4.1 | ASC API key — **OPTIONAL, leave empty**; iOS is an unprovisioned escape hatch | skipped when `ASC_KEY_ID` is empty |
 | 4.2 | Distribution cert (.p12) — optional, only if 4.1 is set | checklist 3.7 |
 | 4.3 | Provisioning profiles — optional, only if 4.1 is set | `ls ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/` |
-| 4.5 | Model API key (per-arm model under test) | curl chat-completion round trip |
+| 4.5 | Model block (per-arm model under test) — copy this Mac's `configs/arms/<arm>.env.example` into `credentials.env`; OpenRouter arms (kimi, grok) each get their OWN key | curl chat-completion round trip (`60-credentials.sh`, provider-aware) |
+| 4.5a | Workspace `opencode.json` rendered for this arm (stage 70, after any `MODEL_*` change) | `verify.sh` §6 arm-consistency check |
 | 4.8 | meow bank API key — restricted to **one** account for this agent | `curl -s -H "x-api-key: $MEOW_API_TOKEN" https://api.meow.com/v1/api-keys/current` |
 | 4.9 | Stripe key — this agent's own member account, `sk_live_` (not `sk_org_`, not `rk_`) | `/v1/account` shows `charges_enabled` and empty `requirements.currently_due` |
 | 4.10 | Inkbox key — agent-scoped, plus `INKBOX_VAULT_KEY` and `INKBOX_AGENT_HANDLE` | `/api-keys/self` has a `scoped_identity_id`; `/identities` returns exactly 1, matching the handle |

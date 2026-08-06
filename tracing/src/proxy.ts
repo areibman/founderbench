@@ -106,21 +106,10 @@ export class InterceptionProxy {
       { parentId: requestId },
     );
 
-    // Azure OpenAI (gpt-5 family / reasoning models) rejects `max_tokens` and
-    // requires `max_completion_tokens`; OpenCode's openai-compatible provider
-    // sends the former. Rewrite for Azure only — the verbatim req.json side
-    // file above still records exactly what the agent sent.
-    let forwardBody = bodyRaw;
-    if (
-      new URL(url).hostname.endsWith(".azure.com") &&
-      bodyJson !== undefined &&
-      typeof bodyJson === "object" &&
-      bodyJson !== null &&
-      "max_tokens" in bodyJson
-    ) {
-      const { max_tokens, ...rest } = bodyJson as { max_tokens: unknown } & Record<string, unknown>;
-      forwardBody = Buffer.from(JSON.stringify({ ...rest, max_completion_tokens: max_tokens }));
-    }
+    // Per-host request rewrites (see rewriteForUpstream). The verbatim
+    // req.json side file above always records exactly what the agent sent;
+    // only the forwarded copy changes.
+    const forwardBody = rewriteForUpstream(new URL(url).hostname, bodyRaw, bodyJson);
 
     // Forward headers, minus hop-by-hop; optionally override auth.
     const headers: Record<string, string> = {};
@@ -224,6 +213,34 @@ export class InterceptionProxy {
       });
     }
   }
+}
+
+/**
+ * Per-host request-body rewrites for provider quirks the fleet spans
+ * (configs/arms/). Returns the bytes to forward; the verbatim original is
+ * always preserved in the trace side file by the caller.
+ *
+ * - Azure OpenAI (gpt-5 family / reasoning models) rejects `max_tokens` and
+ *   requires `max_completion_tokens`; OpenCode's provider sends the former.
+ * - Anthropic's OpenAI-compat surface REQUIRES `max_tokens` on every request
+ *   (mirrors the native Messages API); clients that omit it get a 400, so
+ *   inject a generous default when neither token field is present.
+ */
+export function rewriteForUpstream(hostname: string, bodyRaw: Buffer, bodyJson: unknown): Buffer {
+  if (bodyJson === undefined || typeof bodyJson !== "object" || bodyJson === null) return bodyRaw;
+  const body = bodyJson as Record<string, unknown>;
+  if (hostname.endsWith(".azure.com") && "max_tokens" in body) {
+    const { max_tokens, ...rest } = body;
+    return Buffer.from(JSON.stringify({ ...rest, max_completion_tokens: max_tokens }));
+  }
+  if (
+    hostname === "api.anthropic.com" &&
+    !("max_tokens" in body) &&
+    !("max_completion_tokens" in body)
+  ) {
+    return Buffer.from(JSON.stringify({ ...body, max_tokens: 32768 }));
+  }
+  return bodyRaw;
 }
 
 function safeJson(text: string): unknown {

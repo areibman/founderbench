@@ -58,16 +58,25 @@ fi
 
 log "── Model provider ──"
 if [[ -n "${MODEL_API_KEY:-}" && -n "${MODEL_UPSTREAM_URL:-}" && -n "${MODEL_ID:-}" ]]; then
+  # The fleet spans access shapes (Azure deployment, OpenRouter, direct
+  # provider keys on OpenAI-compat surfaces — see configs/arms/). Match the
+  # proxy's per-host behavior: OpenAI/Azure reasoning models reject max_tokens
+  # and demand max_completion_tokens; every other OpenAI-compatible upstream
+  # takes plain max_tokens.
+  case "$MODEL_UPSTREAM_URL" in
+    *azure.com*|*api.openai.com*) TOK_FIELD="max_completion_tokens" ;;
+    *)                            TOK_FIELD="max_tokens" ;;
+  esac
   # Azure OpenAI v1 endpoint accepts Bearer; api-key is sent too so the check
   # also passes on older Azure api-version surfaces. Harmless elsewhere.
-  must "model API: chat completion round-trip ($MODEL_ID)" \
+  must "model API: chat completion round-trip ($MODEL_ID @ $MODEL_UPSTREAM_URL)" \
     curl -sf --max-time 30 "$MODEL_UPSTREAM_URL/chat/completions" \
       -H "Authorization: Bearer $MODEL_API_KEY" \
       -H "api-key: $MODEL_API_KEY" \
       -H "Content-Type: application/json" \
-      -d "{\"model\":\"$MODEL_ID\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_completion_tokens\":16}"
+      -d "{\"model\":\"$MODEL_ID\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"$TOK_FIELD\":16}"
 else
-  fail "MODEL_API_KEY/MODEL_UPSTREAM_URL/MODEL_ID not set"; FAILURES=$((FAILURES+1))
+  fail "MODEL_API_KEY/MODEL_UPSTREAM_URL/MODEL_ID not set (per-arm block — see configs/arms/)"; FAILURES=$((FAILURES+1))
 fi
 
 log "── Browserbase (cloud browsers — CAPTCHA fallback) ──"

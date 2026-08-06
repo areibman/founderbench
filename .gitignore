@@ -223,6 +223,8 @@ runs/
 artifacts/
 # Secrets
 credentials.env
+# Filled per-arm model blocks (only the .example templates are tracked)
+configs/arms/*.env
 *.p8
 *.p12
 *.mobileprovision

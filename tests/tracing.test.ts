@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { TraceStore } from "../tracing/src/trace.ts";
-import { InterceptionProxy } from "../tracing/src/proxy.ts";
+import { InterceptionProxy, rewriteForUpstream } from "../tracing/src/proxy.ts";
 import { FsWatchCollector } from "../tracing/src/collectors.ts";
 
 test("TraceStore appends and reads back typed events", () => {
@@ -177,6 +177,45 @@ test("proxy does not flag a fallback when served model matches requested", async
     upstream.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("per-host rewrites: Azure token rename, Anthropic max_tokens injection, others untouched", () => {
+  const mk = (obj: Record<string, unknown>) => Buffer.from(JSON.stringify(obj));
+  const parse = (buf: Buffer) => JSON.parse(buf.toString("utf8")) as Record<string, unknown>;
+
+  // Azure: max_tokens renamed to max_completion_tokens.
+  const azure = parse(
+    rewriteForUpstream("myres.openai.azure.com", mk({ model: "m", max_tokens: 4096 }), {
+      model: "m",
+      max_tokens: 4096,
+    }),
+  );
+  assert.equal(azure.max_completion_tokens, 4096);
+  assert.ok(!("max_tokens" in azure));
+
+  // Anthropic compat: max_tokens REQUIRED — injected when absent…
+  const anthropic = parse(
+    rewriteForUpstream("api.anthropic.com", mk({ model: "claude-fable-5" }), {
+      model: "claude-fable-5",
+    }),
+  );
+  assert.equal(anthropic.max_tokens, 32768);
+
+  // …but never overrides a client-provided value.
+  const withTokens = mk({ model: "claude-fable-5", max_tokens: 128000 });
+  const untouched = rewriteForUpstream("api.anthropic.com", withTokens, {
+    model: "claude-fable-5",
+    max_tokens: 128000,
+  });
+  assert.equal(untouched, withTokens);
+
+  // Every other upstream (OpenRouter, DashScope, Meta, Gemini): bytes pass
+  // through identical.
+  const orBody = mk({ model: "moonshotai/kimi-k3", max_tokens: 8192 });
+  assert.equal(
+    rewriteForUpstream("openrouter.ai", orBody, { model: "moonshotai/kimi-k3", max_tokens: 8192 }),
+    orBody,
+  );
 });
 
 test("fswatch records changed paths and honors declared excludes", async () => {

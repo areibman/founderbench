@@ -327,6 +327,17 @@ PLIST
 fi
 
 log "══ 6. Harness smoke ══"
+# Arm consistency: the workspace opencode.json must have been rendered for THIS
+# Mac's model block (stage 70). A stale render silently runs the wrong arm.
+v "workspace opencode.json rendered for this arm (founderbench/\$MODEL_ID)" bash -c '
+  [[ -n "${MODEL_ID:-}" ]] || { echo "MODEL_ID not set in credentials.env (see configs/arms/)"; exit 1; }
+  [[ -f "$HOME/opencode.json" ]] || { echo "~/opencode.json missing — run 70-agent-workspace.sh"; exit 1; }
+  GOT=$(jq -r ".model" "$HOME/opencode.json" 2>/dev/null)
+  [[ "$GOT" == "founderbench/$MODEL_ID" ]] || {
+    echo "~/opencode.json model is \"$GOT\", credentials.env says \"founderbench/$MODEL_ID\""
+    echo "re-run machine/70-agent-workspace.sh"; exit 1; }
+  jq -e ".provider.founderbench.models[\"$MODEL_ID\"]" "$HOME/opencode.json" >/dev/null || {
+    echo "model \"$MODEL_ID\" missing from provider.founderbench.models — re-run 70-agent-workspace.sh"; exit 1; }'
 v "opencode serve starts + health"     bash -c '
   opencode serve --port 41299 >/tmp/fb-verify-opencode.log 2>&1 &
   OC_PID=$!

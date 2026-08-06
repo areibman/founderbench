@@ -490,7 +490,12 @@ const cfg = loadRunConfig(configPath);
 
 // Resume logic: explicit --run-id, or config resume_run_id, else new run.
 const resumeId = argOf("run-id") ?? (cfg.run.resume_run_id || undefined);
-const runId = resumeId ?? `${cfg.run.name}-${new Date().toISOString().slice(0, 10)}-${randomUUID().slice(0, 8)}`;
+// FB_ARM (per-arm model block, configs/arms/) lands in the run id so the seven
+// parallel Macs produce runs distinguishable at a glance when collected.
+const armTag = (process.env.FB_ARM ?? "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+const runId =
+  resumeId ??
+  `${cfg.run.name}${armTag ? `-${armTag}` : ""}-${new Date().toISOString().slice(0, 10)}-${randomUUID().slice(0, 8)}`;
 
 const bootstrapTrace = new TraceStore(join(FB_ROOT, "runs"), runId);
 const checkpoint = resumeId ? new CheckpointStore(bootstrapTrace).load() : null;

@@ -25,9 +25,40 @@ CHARTER="${2:-$SRC/AGENTS.md}"
 [[ -f "$CHARTER" ]] || CHARTER="$FB_ROOT/${2:-}"
 [[ -f "$CHARTER" ]] || die "charter not found: ${2:-$SRC/AGENTS.md}"
 
-log "Installing opencode.json → $TARGET"
-cp "$SRC/opencode.json" "$TARGET/opencode.json"
-ok "opencode.json"
+# opencode.json is a template: the model block is rendered per arm from
+# credentials.env (see configs/arms/). MODEL_NPM picks the provider package —
+# @ai-sdk/openai (Responses API; OpenAI/Azure only, keeps reasoningSummary) or
+# @ai-sdk/openai-compatible (Chat Completions; every other upstream).
+[[ -n "${MODEL_ID:-}" ]] || die "MODEL_ID not set — fill the model block in credentials.env (see configs/arms/)"
+MODEL_NPM="${MODEL_NPM:-@ai-sdk/openai}"
+require_cmd jq
+
+# Optional per-arm knobs (all from the arm's env block, see configs/arms/):
+#   MODEL_OPTIONS_JSON — model options exactly as the provider's docs specify
+#     (overrides the @ai-sdk/openai reasoningSummary default). Invalid JSON
+#     fails the render loudly.
+#   MODEL_CONTEXT / MODEL_OUTPUT — documented token limits; OpenCode uses
+#     limit.context for compaction thresholds, which matters over 72 hours.
+log "Rendering opencode.json → $TARGET (arm: ${FB_ARM:-?}, model: $MODEL_ID, npm: $MODEL_NPM)"
+jq --arg mid "$MODEL_ID" --arg npm "$MODEL_NPM" \
+   --argjson opts "${MODEL_OPTIONS_JSON:-null}" \
+   --argjson ctx "${MODEL_CONTEXT:-null}" \
+   --argjson out "${MODEL_OUTPUT:-null}" '
+  .model = "founderbench/\($mid)"
+  | .provider.founderbench.npm = $npm
+  | .provider.founderbench.models = {
+      ($mid): (
+        { name: "\($mid) (via interception proxy)" }
+        + (if $opts != null then { options: $opts }
+           elif $npm == "@ai-sdk/openai" then { options: { reasoningSummary: "detailed" } }
+           else {} end)
+        + (if $ctx != null and $out != null
+           then { limit: { context: $ctx, output: $out } }
+           else {} end)
+      )
+    }
+' "$SRC/opencode.json" > "$TARGET/opencode.json"
+ok "opencode.json (founderbench/$MODEL_ID)"
 
 log "Installing founder charter → AGENTS.md ($(basename "$CHARTER"))"
 cp "$CHARTER" "$TARGET/AGENTS.md"
