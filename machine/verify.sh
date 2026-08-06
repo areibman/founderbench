@@ -94,6 +94,49 @@ v "AX API reachable (Accessibility TCC)" bash -c 'AXBIN=$(command -v ax || echo 
 v "osascript System Events (AppleEvents TCC)" osascript -e 'tell application "System Events" to count processes'
 v "peekaboo permissions granted" bash -c 'peekaboo permissions status 2>&1 | grep -qiv denied'
 v "passwordless sudo (agent autonomy)" sudo -n true
+# GUI run-wrapper apps (cmux, terminals, editors) must already hold Accessibility
+# or macOS pops a first-run "…would like to control this computer" dialog the
+# instant the agent drives the GUI. 40-tcc.sh pre-grants them; this proves it
+# stuck. Any installed wrapper app with no allow row = fix 40-tcc.sh, not a run.
+v "run-wrapper apps hold Accessibility TCC (no first-run dialog)" bash -c '
+  USER_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
+  SYS_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+  # If neither TCC.db is readable here, defer to the run-context preflight.
+  if ! sqlite3 "$USER_DB" "SELECT 1;" >/dev/null 2>&1 && ! sudo -n sqlite3 "$SYS_DB" "SELECT 1;" >/dev/null 2>&1; then
+    echo "TCC.db not readable from this session; run-context preflight covers it"; exit 0
+  fi
+  granted_for() {
+    local q="SELECT 1 FROM access WHERE service=\"kTCCServiceAccessibility\" AND client=\"$1\" AND auth_value>=2 LIMIT 1;"
+    [[ -n "$(sqlite3 "$USER_DB" "$q" 2>/dev/null)" ]] && return 0
+    [[ -n "$(sudo -n sqlite3 "$SYS_DB" "$q" 2>/dev/null)" ]] && return 0
+    return 1
+  }
+  missing=""
+  check_app() {
+    local app="$1" bid
+    [[ -d "$app" ]] || return 0
+    bid="$(defaults read "$app/Contents/Info" CFBundleIdentifier 2>/dev/null)" || bid=""
+    [[ -n "$bid" ]] || return 0
+    granted_for "$bid" || missing="$missing ${app##*/}($bid)"
+  }
+  apps=(cmux Terminal iTerm Ghostty WezTerm kitty Alacritty Warp "Visual Studio Code" Cursor "Google Chrome")
+  for name in "${apps[@]}"; do
+    for base in /Applications /Applications/Utilities /System/Applications/Utilities "$HOME/Applications"; do
+      check_app "$base/$name.app"
+    done
+  done
+  if [[ -n "${FB_TCC_APPS:-}" ]]; then
+    OLDIFS=$IFS; IFS=":"
+    for a in $FB_TCC_APPS; do
+      IFS=$OLDIFS
+      if [[ "$a" == /* ]]; then check_app "$a"; else
+        for base in /Applications /Applications/Utilities /System/Applications/Utilities "$HOME/Applications"; do check_app "$base/$a.app"; done
+      fi
+    done
+    IFS=$OLDIFS
+  fi
+  [[ -z "$missing" ]] || { echo "no Accessibility grant for:$missing — add it to machine/40-tcc.sh"; exit 1; }
+  echo "all installed run-wrapper apps pre-granted"'
 
 # Self-KVM: the machine drives its own console GUI over loopback VNC. This is
 # the break-glass path (vncdotool skill) for dialogs/toggles the app-level

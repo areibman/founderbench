@@ -104,6 +104,81 @@ test("proxy forwards JSON requests, traces both sides, extracts usage", async ()
   }
 });
 
+test("proxy flags a safety fallback when the served model differs from requested", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "fb-fallback-"));
+  // Upstream echoes a DIFFERENT model than requested — the shape a safety
+  // router produces when it reroutes an "unsafe" prompt to a safer model.
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.write(`data: {"model":"opus-4.8","choices":[{"delta":{"content":"no"}}]}\n\n`);
+    res.write(`data: {"model":"opus-4.8","choices":[{"delta":{"content":"pe"}}],"usage":{"prompt_tokens":9,"completion_tokens":2}}\n\n`);
+    res.write(`data: [DONE]\n\n`);
+    res.end();
+  });
+  await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+  const upPort = (upstream.address() as { port: number }).port;
+
+  const trace = new TraceStore(dir, "fallback-run");
+  const proxy = new InterceptionProxy({ port: 41914, upstreamUrl: `http://127.0.0.1:${upPort}`, trace });
+  await proxy.start();
+  try {
+    await fetch("http://127.0.0.1:41914/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "fable-5", messages: [{ role: "user", content: "…" }], stream: true }),
+      headers: { "content-type": "application/json" },
+    }).then((r) => r.text());
+
+    const events = trace.read();
+    const response = events.find((e) => e.type === "model.response")!;
+    const rd = response.data as { requestedModel: string; servedModel: string; fallback: boolean };
+    assert.equal(rd.requestedModel, "fable-5");
+    assert.equal(rd.servedModel, "opus-4.8");
+    assert.equal(rd.fallback, true);
+
+    const fb = events.find((e) => e.type === "model.fallback");
+    assert.ok(fb, "emits a dedicated model.fallback event");
+    const fbd = fb!.data as { requested: string; served: string; messageCount: number };
+    assert.equal(fbd.requested, "fable-5");
+    assert.equal(fbd.served, "opus-4.8");
+    assert.equal(fbd.messageCount, 1);
+  } finally {
+    await proxy.stop();
+    upstream.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("proxy does not flag a fallback when served model matches requested", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "fb-nofallback-"));
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ model: "fable-5", choices: [{ message: { content: "ok" } }] }));
+  });
+  await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+  const upPort = (upstream.address() as { port: number }).port;
+
+  const trace = new TraceStore(dir, "nofallback-run");
+  const proxy = new InterceptionProxy({ port: 41915, upstreamUrl: `http://127.0.0.1:${upPort}`, trace });
+  await proxy.start();
+  try {
+    await fetch("http://127.0.0.1:41915/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({ model: "fable-5", messages: [{ role: "user", content: "hi" }] }),
+      headers: { "content-type": "application/json" },
+    }).then((r) => r.json());
+
+    const events = trace.read();
+    const rd = events.find((e) => e.type === "model.response")!.data as { fallback: boolean; servedModel: string };
+    assert.equal(rd.servedModel, "fable-5");
+    assert.equal(rd.fallback, false);
+    assert.ok(!events.some((e) => e.type === "model.fallback"), "no fallback event on a normal turn");
+  } finally {
+    await proxy.stop();
+    upstream.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("fswatch records changed paths and honors declared excludes", async () => {
   const dir = mkdtempSync(join(tmpdir(), "fb-fsw-"));
   const watched = join(dir, "watched");

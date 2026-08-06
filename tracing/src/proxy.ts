@@ -169,6 +169,13 @@ export class InterceptionProxy {
     const responseText = responseRaw.toString("utf8");
     const isSSE = (upstreamRes.headers.get("content-type") ?? "").includes("text/event-stream");
     const usage = extractUsage(responseText, isSSE);
+    // Which model actually served this request. Providers with a safety router
+    // (e.g. a model that silently reroutes "unsafe" prompts to a different,
+    // safer model) report the substitute here, not in the request. This is the
+    // ONLY per-turn signal that a fallback happened — surface it in the light
+    // index so analysis never has to parse every SSE side file to find it.
+    const servedModel = extractServedModel(responseText, isSSE);
+    const requestedModel = parsed?.model;
     if (usage) {
       this.usage.inputTokens += usage.inputTokens;
       this.usage.outputTokens += usage.outputTokens;
@@ -190,6 +197,11 @@ export class InterceptionProxy {
         durationMs: Date.now() - started,
         streaming: isSSE,
         usage,
+        requestedModel,
+        servedModel,
+        // True when the provider's safety router substituted a different model
+        // than the one requested. Per-arm fallback rate is a first-class metric.
+        fallback: Boolean(requestedModel && servedModel && requestedModel !== servedModel),
         bodyFile: resBodyFile,
         // Convenience summary only — the lossless record is bodyFile.
         body: isSSE ? sseToText(responseText) : safeJson(responseText),
@@ -198,6 +210,18 @@ export class InterceptionProxy {
     );
     if (usage) {
       this.opts.trace.emit("model.usage", "proxy", { requestId, ...usage, totals: { ...this.usage } });
+    }
+    // Dedicated event so a fallback is queryable/alertable on its own, not just
+    // a field buried in model.response. messageCount lets the analyst locate the
+    // triggering turn; the verbatim request is in bodyFile above.
+    if (requestedModel && servedModel && requestedModel !== servedModel) {
+      this.opts.trace.emit("model.fallback", "proxy", {
+        requestId,
+        requested: requestedModel,
+        served: servedModel,
+        status: upstreamRes.status,
+        messageCount: items?.length,
+      });
     }
   }
 }
@@ -243,6 +267,39 @@ function sseToText(sse: string): { text: string; frames: number } {
     }
   }
   return { text, frames };
+}
+
+/**
+ * Pull the served model id out of a response body. Chat Completions carries
+ * `model` on every chunk; the Responses API carries it top-level (non-stream)
+ * or under `response.model` in the stream events. Returns the first value seen.
+ * Used to detect provider-side safety fallbacks (served model ≠ requested).
+ */
+function extractServedModel(body: string, isSSE: boolean): string | undefined {
+  const pick = (obj: unknown): string | undefined => {
+    const o = obj as { model?: unknown; response?: { model?: unknown } } | undefined;
+    const m = o?.model ?? o?.response?.model;
+    return typeof m === "string" && m.length > 0 ? m : undefined;
+  };
+  if (!isSSE) {
+    try {
+      return pick(JSON.parse(body));
+    } catch {
+      return undefined;
+    }
+  }
+  for (const line of body.split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (payload === "[DONE]") continue;
+    try {
+      const m = pick(JSON.parse(payload));
+      if (m) return m;
+    } catch {
+      /* skip malformed frame */
+    }
+  }
+  return undefined;
 }
 
 interface WireUsage {

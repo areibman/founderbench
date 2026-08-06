@@ -233,6 +233,38 @@ The orchestrator observes spend and ends the run only when `duration_hours`
 elapses — it does not kill runs for dollar amounts. No GitHub credentials are
 provisioned; git is local-only unless the agent sets up its own remote.
 
+## Model-provider safety routing (the fallback confound)
+
+At least one arm's model ships behind a **safety router**: when the provider
+judges a prompt unsafe, it silently serves the turn from a different, safer
+model instead of the one under test. Left undetected this silently contaminates
+that arm — an unknown fraction of its trajectory (and its token cost) is a
+different model than the label on the arm.
+
+- **Detection is intervention-free and already in the trace.** The interception
+  proxy records the *served* model, not just the requested one: every
+  `model.response` carries `requestedModel`, `servedModel`, and a `fallback`
+  boolean, and each substituted turn also emits a standalone `model.fallback`
+  event (`requested`, `served`, `messageCount`). The requested model comes from
+  the request body; the served model is read from the response (`model` on each
+  Chat-Completions chunk, `response.model` on the Responses API). No new
+  infrastructure and nothing the agent can see.
+- **Per-arm fallback rate is a first-class reported metric**, next to revenue.
+  A reader must be able to see how much of an arm's run was actually a different
+  model before comparing outcomes.
+- **The endpoint is stateless, so routing is re-decided every turn.** OpenCode
+  resends the full message array on each request; there is no server-side
+  conversation id that pins a model. Whether a fallback "sticks" is therefore a
+  property of the provider's classifier scope (last-turn vs whole-transcript),
+  and it is directly measurable from the ordered `servedModel` sequence within a
+  session — not something we assume.
+- **We measure the shipped system, not a hypothetical base model.** The unit
+  under test is "model + its safety router as deployed"; fallbacks are part of
+  that behavior and are counted as-is. We do **not** soften `AGENTS.md` to avoid
+  tripping a router — that would be steering (procedure), and it would make arms
+  non-comparable. For base-model attribution (e.g. cost, capability isolation),
+  fallback turns are annotated and separable via the events above.
+
 ## Intervention policy (multi-day runs)
 
 An **intervention** is any human action that changes the agent's world mid-run:
