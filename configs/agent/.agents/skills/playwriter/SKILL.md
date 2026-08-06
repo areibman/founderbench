@@ -33,3 +33,7 @@ playwriter -s 1 -e 'await page.goto("https://example.com")'
 **Always use single quotes** for the `-e` argument. Single quotes prevent bash from interpreting `$`, backticks, and backslashes inside your JS code. Use double quotes or backtick template literals for strings inside the JS.
 
 If `playwriter` is not found, use `npx playwriter@latest` or `bunx playwriter@latest`.
+
+If you are not able to activate playwriter, us a separate computer use tool to open Chrome and toggle the extension manually.
+
+Be sure to ensure that you close webpages that are no longer used to avoid running out of memory.
