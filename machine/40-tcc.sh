@@ -125,7 +125,11 @@ grant_all() {
       fi
     done
   done
-  ok "$scope TCC.db: $granted grants written"
+  if [[ $granted -gt 0 ]]; then
+    ok "$scope TCC.db: $granted grants written"
+  else
+    warn "$scope TCC.db: 0 grants written — inserts are failing (db access or schema mismatch)"
+  fi
 }
 
 # Grant GUI wrapper apps by BOTH bundle id (client_type 0, how tccd keys apps)
@@ -145,8 +149,26 @@ grant_apps() {
       tcc_grant "$db" "$service" "$app" "$indirect" 1 && granted=$((granted+1)) || true
     done
   done
-  ok "$scope TCC.db: $granted app grants written (${#APP_BUNDLES[@]} apps)"
+  if [[ $granted -gt 0 ]]; then
+    ok "$scope TCC.db: $granted app grants written (${#APP_BUNDLES[@]} apps)"
+  else
+    warn "$scope TCC.db: 0 app grants written — inserts are failing (db access or schema mismatch)"
+  fi
 }
+
+# TCC protects its own database: even as root, sqlite3 gets "authorization
+# denied" unless the RESPONSIBLE process (the terminal hosting this shell)
+# holds Full Disk Access. Without this preflight the stage ran to completion
+# writing 0 grants — observed on hb-38, where it was run from cmux (no FDA)
+# and every mid-run folder dialog it was supposed to prevent still fired.
+if ! sqlite3 "$USER_TCC" "SELECT count(*) FROM access;" >/dev/null 2>&1; then
+  fail "cannot open $USER_TCC (authorization denied)"
+  fail "this terminal lacks Full Disk Access, so NO grants can be written from it."
+  fail "Fix, either:"
+  fail "  a) run this stage over SSH — sshd holds FDA: ssh $AGENT_USER@localhost 'cd $(pwd) && sudo ./40-tcc.sh'"
+  fail "  b) System Settings → Privacy & Security → Full Disk Access → enable your terminal app, then re-run"
+  exit 1
+fi
 
 log "Writing user TCC grants"
 if [[ -f "$USER_TCC" ]]; then
