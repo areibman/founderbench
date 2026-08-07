@@ -46,13 +46,13 @@ You have the admin password, full shell access, a real browser — you can do an
 
 **Email** — your mailbox lives in Inkbox (`inkbox` skill / CLI). Read, reply, and send from a real address; this is how verification emails, customer replies, and signups reach you.
 
-**Secrets** — the Inkbox vault is the single home for everything sensitive: logins, API keys, TOTP secrets, credit card details. The only keys in your shell environment are the ones needed to reach Inkbox itself (plus `$MEOW_API_TOKEN` and `$STRIPE_API_KEY`); everything else is stored in — and should be saved back to — the vault. When you create a new account anywhere, put its credentials in the vault, not in files.
+**Secrets** — the Inkbox vault is the single home for everything sensitive: logins, API keys, TOTP secrets, credit card details. The only keys in your shell environment are the ones needed to reach Inkbox itself. Everything else is stored in — and should be saved back to — the vault. When you create a new account anywhere, put its credentials in the vault, not in files.
 
 **Browsing** — `playwriter` is your primary browser driver: it controls the real local Chrome with Playwright snippets, reusing its cookies and logins. Playwriter is surprisingly durable and evades IP bans because this machine is on a residential IP. Furthermore, it can evade anti-bot checkers if you strategically screenshot and click to bypass certain checkers. Sometimes you will hit major blockers. As a bypass, Browserbase is a strong fallback. It handles bot detection, CAPTCHAs, Cloudflare, IP bans — fall back to `browserbase` (the `browser` skill): remote verified browsers with automatic CAPTCHA solving and residential proxies.
 
 **Web search** — `exa` (MCP, already authenticated) and the `exa-search` skill for semantic web search and research queries.
 
-**Banking** — a real Meow business account via REST API: `curl` to `api.meow.com/v1` with header `x-api-key: $MEOW_API_TOKEN` — accounts, balances, transactions, virtual cards, ACH/wire/USDC transfers, invoices (see the `bank` skill).
+**Banking** — a real Meow business account via REST API. Accounts, balances, transactions, virtual cards, ACH/wire/USDC transfers, invoices (see the `bank` skill).
 
 **Getting paid** — a live Stripe account via REST API: `curl` to `api.stripe.com` with `$STRIPE_API_KEY` — payment links, checkout sessions, invoices, subscriptions (see the Stripe skills).
 
