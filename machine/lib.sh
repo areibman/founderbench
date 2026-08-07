@@ -75,8 +75,15 @@ hydrate_from_vault() {
         | select(((.name // .label // .title // "") | ascii_upcase) == $n) ]
       [0] | (.id // .secret_id // empty)' <<<"$secrets" 2>/dev/null)
     [[ -n "$sid" ]] || continue
+    # `vault get --json` → {id, name, secretType, payload}. Payload by type:
+    # api_key {apiKey, endpoint, notes} · login {password, username, ...} ·
+    # key_pair {accessKey, secretKey, ...} · other = arbitrary JSON (accept a
+    # bare string or a {value}/{key}/{token} object).
     val=$(inkbox vault get "$sid" --json 2>/dev/null \
-      | jq -r '.value // .secret // .key // .api_key // .password // .data.value // empty' 2>/dev/null)
+      | jq -r '.payload
+               | if type == "string" then .
+                 else (.apiKey // .password // .secretKey // .value // .key // .token // empty)
+                 end' 2>/dev/null)
     if [[ -n "$val" ]]; then
       export "$v=$val"
     else
