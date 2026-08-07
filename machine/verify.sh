@@ -56,9 +56,23 @@ v "no Chrome for Testing on disk (bot-detection tell)" bash -c '
   ! compgen -G "$HOME/.playwriter/browsers/chrome-*" >/dev/null 2>&1'
 v "playwriter: real-Chrome CDP session + navigation + relay" bash -c '
   CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  playwriter browser start "$CHROME" --user-data-dir "$HOME/.playwriter/fb-profile" >/dev/null 2>&1 || true
+  # Launch stock Chrome with remote debugging OURSELVES. playwriter 0.4.x
+  # "browser start" is the extension path (waits for the extension, no
+  # --remote-debugging-port option) and does not reliably open 9222; the
+  # direct-CDP path documents launching Chrome with the flag as a supported
+  # prerequisite. Owning the launch keeps this deterministic: known binary,
+  # known port, no extension.
+  if ! nc -z 127.0.0.1 9222 >/dev/null 2>&1; then
+    "$CHROME" --remote-debugging-port=9222 --user-data-dir="$HOME/.playwriter/fb-profile" \
+      --no-first-run --no-default-browser-check >/dev/null 2>&1 &
+  fi
   for _ in $(seq 1 20); do nc -z 127.0.0.1 9222 >/dev/null 2>&1 && break; sleep 1; done
-  nc -z 127.0.0.1 9222 >/dev/null 2>&1 || { echo "Chrome did not expose a CDP port after browser start"; exit 1; }
+  nc -z 127.0.0.1 9222 >/dev/null 2>&1 || {
+    echo "Chrome did not expose the CDP port. If Chrome was already running"
+    echo "without remote debugging, the new launch delegates to that instance"
+    echo "and the flag is ignored — kill it first: pkill -f \"Google Chrome\""
+    exit 1
+  }
   # Port 9222 must be owned by STOCK CHROME, not just any CDP endpoint.
   # Electron/CEF apps (a leftover runner, cmux, ...) also serve
   # /devtools/browser/ and pass a UA sniff (their UA carries a normal Chrome/
