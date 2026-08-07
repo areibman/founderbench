@@ -176,17 +176,30 @@ grant_apps() {
 # sudo strips the guard env var, and it can't work anyway when "Allow full disk
 # access for remote users" is off. Removed: on a SIP-off box it's unnecessary,
 # on a SIP-on box it's insufficient.)
+# Open a System Settings privacy pane in the console user's GUI session. Runs
+# as the agent user (root can't target the user's SystemUIServer), so the pane
+# actually appears on the screen the agent drives.
+open_privacy_pane() {  # $1 = anchor, e.g. Privacy_AllFiles
+  local uid; uid="$(id -u "$AGENT_USER")"
+  launchctl asuser "$uid" sudo -u "$AGENT_USER" \
+    open "x-apple.systempreferences:com.apple.preference.security?$1" 2>/dev/null || true
+}
+
 if ! sip_relaxed; then
-  fail "SIP is ENABLED — this stage cannot provision TCC on this machine."
-  fail "  csrutil: $(csrutil status 2>/dev/null || echo unknown)"
-  fail "Screen Recording + Full Disk Access live in the SIP-protected system"
-  fail "TCC.db; no script can write them while SIP is on. The fleet standard is"
-  fail "to relax SIP on these dedicated appliances:"
-  fail "  1. shut down, boot to Recovery (Apple Silicon: hold power → Options)"
-  fail "  2. Utilities → Terminal → 'csrutil disable' → reboot"
-  fail "  3. re-run: sudo ./machine/40-tcc.sh   (writes all grants directly, no FDA needed)"
-  fail "Alternative without relaxing SIP: enroll in MDM and push a PPPC profile,"
-  fail "or grant each app manually in System Settings → Privacy & Security."
+  warn "SIP is ENABLED — the TCC databases are locked to scripts on this machine."
+  warn "  csrutil: $(csrutil status 2>/dev/null || echo unknown)"
+  log  "Opening the three Privacy panes so you can toggle them by hand."
+  log  "In EACH pane, click '+' and add cmux (drag /Applications/cmux.app or"
+  log  "browse to it), then switch it ON. Full Disk Access is the important one —"
+  log  "it supersedes every Downloads/Desktop/Documents prompt in a single toggle."
+  open_privacy_pane Privacy_AllFiles        # Full Disk Access  ← the one that matters most
+  sleep 1
+  open_privacy_pane Privacy_ScreenCapture   # Screen Recording
+  sleep 1
+  open_privacy_pane Privacy_Accessibility   # Accessibility
+  warn "After toggling cmux ON in all three, re-run ./machine/verify.sh."
+  warn "Fleet-standard alternative (does ALL apps at once, no clicking): boot"
+  warn "Recovery → 'csrutil disable' → reboot → re-run this stage."
   exit 1
 fi
 

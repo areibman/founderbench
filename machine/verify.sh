@@ -175,16 +175,23 @@ v "run-wrapper apps hold Accessibility + folder TCC (no first-run dialog)" bash 
     [[ -n "$(sudo -n sqlite3 "$SYS_DB" "$q" 2>/dev/null)" ]] && return 0
     return 1
   }
-  SERVICES=(kTCCServiceAccessibility kTCCServiceSystemPolicyDownloadsFolder kTCCServiceSystemPolicyDesktopFolder kTCCServiceSystemPolicyDocumentsFolder)
+  FOLDER_SERVICES=(kTCCServiceSystemPolicyDownloadsFolder kTCCServiceSystemPolicyDesktopFolder kTCCServiceSystemPolicyDocumentsFolder)
   missing=""
   check_app() {
     local app="$1" bid svc
     [[ -d "$app" ]] || return 0
     bid="$(defaults read "$app/Contents/Info" CFBundleIdentifier 2>/dev/null)" || bid=""
     [[ -n "$bid" ]] || return 0
-    for svc in "${SERVICES[@]}"; do
-      granted_for "$svc" "$bid" || missing="$missing ${app##*/}:${svc#kTCCService}"
-    done
+    granted_for kTCCServiceAccessibility "$bid" || missing="$missing ${app##*/}:Accessibility"
+    # Full Disk Access supersedes every per-folder grant — an app that holds it
+    # never sees a Downloads/Desktop/Documents prompt, so it satisfies the
+    # folder requirement outright. Only when FDA is absent do we require the
+    # three per-folder rows (the SIP-on, manual-toggle fallback path).
+    if ! granted_for kTCCServiceSystemPolicyAllFiles "$bid"; then
+      for svc in "${FOLDER_SERVICES[@]}"; do
+        granted_for "$svc" "$bid" || missing="$missing ${app##*/}:${svc#kTCCService}"
+      done
+    fi
   }
   apps=(cmux Terminal iTerm Ghostty WezTerm kitty Alacritty Warp "Visual Studio Code" Cursor "Google Chrome")
   for name in "${apps[@]}"; do
