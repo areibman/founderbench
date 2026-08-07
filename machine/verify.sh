@@ -84,10 +84,14 @@ v "build keychain unlockable"          bash -c '
   security show-keychain-info founderbench.keychain-db 2>&1 | grep -q "no-timeout\|timeout"'
 if [[ -n "${APPLE_CERT_P12:-}" ]]; then
   v "codesign identity valid (p12 mode)" bash -c 'security find-identity -v -p codesigning founderbench.keychain-db | grep -qv "0 valid"'
-else
+elif [[ -n "${ASC_KEY_ID:-}" || -n "${ASC_ISSUER_ID:-}" || -n "${ASC_PRIVATE_KEY_PATH:-}" ]]; then
   # Team ID is agent-discoverable — only gate on the ASC key material.
   v "cloud signing ready (no p12: ASC key + .p8)" \
     bash -c '[[ -n "${ASC_KEY_ID:-}" && -n "${ASC_ISSUER_ID:-}" && -f "${ASC_PRIVATE_KEY_PATH/#\~/$HOME}" ]]'
+else
+  # iOS is an unprovisioned escape hatch (see credentials.env.example / stage 60):
+  # no p12 and no ASC key is the expected default — simulator builds only.
+  log "  no p12 and no ASC key — iOS unprovisioned; skipping signing check (simulator-only)"
 fi
 v "screencapture works (Screen Recording TCC)" bash -c 'screencapture -x /tmp/fb-verify-screen.png && [[ -s /tmp/fb-verify-screen.png ]]'
 v "AX API reachable (Accessibility TCC)" bash -c 'AXBIN=$(command -v ax || echo $HOME/go/bin/ax); "$AXBIN" apps 2>/dev/null | head -1 | grep -q .'
