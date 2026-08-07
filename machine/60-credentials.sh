@@ -69,8 +69,10 @@ if [[ -n "${MODEL_API_KEY:-}" && -n "${MODEL_UPSTREAM_URL:-}" && -n "${MODEL_ID:
   esac
   # Azure OpenAI v1 endpoint accepts Bearer; api-key is sent too so the check
   # also passes on older Azure api-version surfaces. Harmless elsewhere.
+  # -sS --fail-with-body (not -sf): on an HTTP error the provider's JSON body
+  # is the diagnosis (bad key, wrong region, unknown model) — print it.
   must "model API: chat completion round-trip ($MODEL_ID @ $MODEL_UPSTREAM_URL)" \
-    curl -sf --max-time 30 "$MODEL_UPSTREAM_URL/chat/completions" \
+    curl -sS --fail-with-body --max-time 30 "$MODEL_UPSTREAM_URL/chat/completions" \
       -H "Authorization: Bearer $MODEL_API_KEY" \
       -H "api-key: $MODEL_API_KEY" \
       -H "Content-Type: application/json" \
