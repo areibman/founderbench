@@ -94,14 +94,29 @@ tcc_grant() {
 # kTCCServiceListenEvent is Input Monitoring — required for synthetic keyboard
 # input and event taps (peekaboo, and GUI wrappers that read the event stream);
 # it was the one commonly-missing grant behind mid-run input dialogs.
-APP_SERVICES=(kTCCServiceAccessibility kTCCServiceScreenCapture kTCCServiceListenEvent kTCCServiceAppleEvents kTCCServiceSystemPolicyAllFiles)
+#
+# The per-FOLDER services matter even though SystemPolicyAllFiles (FDA) is
+# granted above them: FDA lives ONLY in the system TCC.db, so with SIP enabled
+# it never lands — and macOS then falls back to per-folder prompts the first
+# time anything under the app touches ~/Downloads etc. ("cmux would like to
+# access files in your Downloads folder", observed mid-run when the git shadow
+# scanned ~). Folder grants live in the USER TCC.db, writable regardless of
+# SIP, so they close that prompt class on every machine.
+FOLDER_SERVICES=(
+  kTCCServiceSystemPolicyDownloadsFolder
+  kTCCServiceSystemPolicyDesktopFolder
+  kTCCServiceSystemPolicyDocumentsFolder
+  kTCCServiceSystemPolicyNetworkVolumes
+  kTCCServiceSystemPolicyRemovableVolumes
+)
+APP_SERVICES=(kTCCServiceAccessibility kTCCServiceScreenCapture kTCCServiceListenEvent kTCCServiceAppleEvents kTCCServiceSystemPolicyAllFiles "${FOLDER_SERVICES[@]}")
 
 grant_all() {
   local db="$1" scope="$2"
   local granted=0
   for client in "${CLIENTS[@]}"; do
     [[ -e "$client" ]] || continue
-    for service in kTCCServiceAccessibility kTCCServiceScreenCapture kTCCServiceListenEvent kTCCServiceAppleEvents kTCCServiceSystemPolicyAllFiles kTCCServiceDeveloperTool; do
+    for service in kTCCServiceAccessibility kTCCServiceScreenCapture kTCCServiceListenEvent kTCCServiceAppleEvents kTCCServiceSystemPolicyAllFiles kTCCServiceDeveloperTool "${FOLDER_SERVICES[@]}"; do
       # AppleEvents needs an indirect object (target app); grant System Events broadly.
       if [[ "$service" == "kTCCServiceAppleEvents" ]]; then
         tcc_grant "$db" "$service" "$client" "com.apple.systemevents" && granted=$((granted+1)) || true

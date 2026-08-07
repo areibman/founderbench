@@ -130,28 +130,35 @@ v "peekaboo permissions granted" bash -c 'peekaboo permissions status 2>&1 | gre
 v "passwordless sudo (agent autonomy)" sudo -n true
 # GUI run-wrapper apps (cmux, terminals, editors) must already hold Accessibility
 # or macOS pops a first-run "…would like to control this computer" dialog the
-# instant the agent drives the GUI. 40-tcc.sh pre-grants them; this proves it
-# stuck. Any installed wrapper app with no allow row = fix 40-tcc.sh, not a run.
-v "run-wrapper apps hold Accessibility TCC (no first-run dialog)" bash -c '
+# instant the agent drives the GUI — and the per-FOLDER grants (Downloads/
+# Desktop/Documents), because when SIP blocks the system-db FDA grant, macOS
+# falls back to per-folder prompts the moment anything scans ~ (observed: the
+# git shadow touched ~/Downloads mid-run → "cmux would like to access files in
+# your Downloads folder"). 40-tcc.sh pre-grants all of these; this proves it
+# stuck. Any installed wrapper app with a missing row = re-run 40-tcc.sh.
+v "run-wrapper apps hold Accessibility + folder TCC (no first-run dialog)" bash -c '
   USER_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
   SYS_DB="/Library/Application Support/com.apple.TCC/TCC.db"
   # If neither TCC.db is readable here, defer to the run-context preflight.
   if ! sqlite3 "$USER_DB" "SELECT 1;" >/dev/null 2>&1 && ! sudo -n sqlite3 "$SYS_DB" "SELECT 1;" >/dev/null 2>&1; then
     echo "TCC.db not readable from this session; run-context preflight covers it"; exit 0
   fi
-  granted_for() {
-    local q="SELECT 1 FROM access WHERE service=\"kTCCServiceAccessibility\" AND client=\"$1\" AND auth_value>=2 LIMIT 1;"
+  granted_for() {  # $1=service $2=client
+    local q="SELECT 1 FROM access WHERE service=\"$1\" AND client=\"$2\" AND auth_value>=2 LIMIT 1;"
     [[ -n "$(sqlite3 "$USER_DB" "$q" 2>/dev/null)" ]] && return 0
     [[ -n "$(sudo -n sqlite3 "$SYS_DB" "$q" 2>/dev/null)" ]] && return 0
     return 1
   }
+  SERVICES=(kTCCServiceAccessibility kTCCServiceSystemPolicyDownloadsFolder kTCCServiceSystemPolicyDesktopFolder kTCCServiceSystemPolicyDocumentsFolder)
   missing=""
   check_app() {
-    local app="$1" bid
+    local app="$1" bid svc
     [[ -d "$app" ]] || return 0
     bid="$(defaults read "$app/Contents/Info" CFBundleIdentifier 2>/dev/null)" || bid=""
     [[ -n "$bid" ]] || return 0
-    granted_for "$bid" || missing="$missing ${app##*/}($bid)"
+    for svc in "${SERVICES[@]}"; do
+      granted_for "$svc" "$bid" || missing="$missing ${app##*/}:${svc#kTCCService}"
+    done
   }
   apps=(cmux Terminal iTerm Ghostty WezTerm kitty Alacritty Warp "Visual Studio Code" Cursor "Google Chrome")
   for name in "${apps[@]}"; do
@@ -169,7 +176,7 @@ v "run-wrapper apps hold Accessibility TCC (no first-run dialog)" bash -c '
     done
     IFS=$OLDIFS
   fi
-  [[ -z "$missing" ]] || { echo "no Accessibility grant for:$missing — add it to machine/40-tcc.sh"; exit 1; }
+  [[ -z "$missing" ]] || { echo "missing TCC grants:$missing — re-run: sudo ./machine/40-tcc.sh"; exit 1; }
   echo "all installed run-wrapper apps pre-granted"'
 
 # Self-KVM: the machine drives its own console GUI over loopback VNC. This is
