@@ -154,18 +154,22 @@ v "AX API reachable (Accessibility TCC)" bash -c 'AXBIN=$(command -v ax || echo 
 v "osascript System Events (AppleEvents TCC)" osascript -e 'tell application "System Events" to count processes'
 v "peekaboo permissions granted" bash -c 'peekaboo permissions status 2>&1 | grep -qiv denied'
 v "passwordless sudo (agent autonomy)" sudo -n true
-# GUI run-wrapper apps (cmux, terminals, editors) must already hold Accessibility
-# or macOS pops a first-run "…would like to control this computer" dialog the
-# instant the agent drives the GUI — and the per-FOLDER grants (Downloads/
-# Desktop/Documents), because when SIP blocks the system-db FDA grant, macOS
-# falls back to per-folder prompts the moment anything scans ~ (observed: the
-# git shadow touched ~/Downloads mid-run → "cmux would like to access files in
-# your Downloads folder"). 40-tcc.sh pre-grants all of these; this proves it
-# stuck. Any installed wrapper app with a missing row = re-run 40-tcc.sh.
-v "run-wrapper apps hold Accessibility + folder TCC (no first-run dialog)" bash -c '
+# GUI run-wrapper apps must hold Accessibility or macOS pops a first-run
+# "…would like to control this computer" dialog the instant the agent drives
+# the GUI — plus folder access (Downloads/Desktop/Documents), because when SIP
+# blocks the system-db FDA grant, macOS falls back to per-folder prompts the
+# moment anything scans ~ (observed: the git shadow touched ~/Downloads mid-run
+# → "cmux would like to access files in your Downloads folder").
+#
+# Only the RUN HOST (the app that launches the agent — cmux by default, set
+# FB_RUN_HOST to override; colon-separated names or .app paths) can actually
+# produce a mid-run dialog, so it is HARD-REQUIRED. Other installed terminals
+# and editors are never used during a run — a missing grant there is advisory,
+# not a gate failure. FDA supersedes the per-folder grants, so an app with FDA
+# satisfies the folder requirement in one shot (the SIP-on manual-toggle path).
+v "run host holds Accessibility + folder TCC (no first-run dialog)" bash -c '
   USER_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
   SYS_DB="/Library/Application Support/com.apple.TCC/TCC.db"
-  # If neither TCC.db is readable here, defer to the run-context preflight.
   if ! sqlite3 "$USER_DB" "SELECT 1;" >/dev/null 2>&1 && ! sudo -n sqlite3 "$SYS_DB" "SELECT 1;" >/dev/null 2>&1; then
     echo "TCC.db not readable from this session; run-context preflight covers it"; exit 0
   fi
@@ -176,48 +180,70 @@ v "run-wrapper apps hold Accessibility + folder TCC (no first-run dialog)" bash 
     return 1
   }
   FOLDER_SERVICES=(kTCCServiceSystemPolicyDownloadsFolder kTCCServiceSystemPolicyDesktopFolder kTCCServiceSystemPolicyDocumentsFolder)
-  missing=""
-  check_app() {
-    local app="$1" bid svc
+  app_gaps() {  # echoes the missing grants for one .app bundle, empty if fully granted
+    local app="$1" bid svc gaps="" name="${1##*/}"
     [[ -d "$app" ]] || return 0
     bid="$(defaults read "$app/Contents/Info" CFBundleIdentifier 2>/dev/null)" || bid=""
     [[ -n "$bid" ]] || return 0
-    granted_for kTCCServiceAccessibility "$bid" || missing="$missing ${app##*/}:Accessibility"
-    # Full Disk Access supersedes every per-folder grant — an app that holds it
-    # never sees a Downloads/Desktop/Documents prompt, so it satisfies the
-    # folder requirement outright. Only when FDA is absent do we require the
-    # three per-folder rows (the SIP-on, manual-toggle fallback path).
+    granted_for kTCCServiceAccessibility "$bid" || gaps="$gaps $name:Accessibility"
     if ! granted_for kTCCServiceSystemPolicyAllFiles "$bid"; then
       for svc in "${FOLDER_SERVICES[@]}"; do
-        granted_for "$svc" "$bid" || missing="$missing ${app##*/}:${svc#kTCCService}"
+        granted_for "$svc" "$bid" || gaps="$gaps $name:${svc#kTCCService}"
       done
     fi
+    echo "$gaps"
   }
-  apps=(cmux Terminal iTerm Ghostty WezTerm kitty Alacritty Warp "Visual Studio Code" Cursor "Google Chrome")
-  for name in "${apps[@]}"; do
+  resolve_and_check() {  # $1=name-or-path → echo gaps across matching install locations
+    local q="$1"
+    if [[ "$q" == /* ]]; then app_gaps "$q"; return; fi
     for base in /Applications /Applications/Utilities /System/Applications/Utilities "$HOME/Applications"; do
-      check_app "$base/$name.app"
+      app_gaps "$base/$q.app"
     done
-  done
-  if [[ -n "${FB_TCC_APPS:-}" ]]; then
-    OLDIFS=$IFS; IFS=":"
-    for a in $FB_TCC_APPS; do
-      IFS=$OLDIFS
-      if [[ "$a" == /* ]]; then check_app "$a"; else
-        for base in /Applications /Applications/Utilities /System/Applications/Utilities "$HOME/Applications"; do check_app "$base/$a.app"; done
-      fi
+  }
+
+  # Required = run host(s) + any deployment-declared hosting apps (FB_TCC_APPS).
+  HOSTS_RAW="${FB_RUN_HOST:-cmux}:${FB_TCC_APPS:-}"
+  host_missing=""; host_names=""
+  app_exists() {  # $1=name-or-path
+    if [[ "$1" == /* ]]; then [[ -d "$1" ]]; return; fi
+    for base in /Applications /Applications/Utilities /System/Applications/Utilities "$HOME/Applications"; do
+      [[ -d "$base/$1.app" ]] && return 0
     done
+    return 1
+  }
+  OLDIFS=$IFS; IFS=":"
+  for a in $HOSTS_RAW; do
     IFS=$OLDIFS
-  fi
-  [[ -z "$missing" ]] || {
-    echo "missing TCC grants:$missing"
-    echo "fix: sudo ./machine/40-tcc.sh (writes these to the user TCC.db)."
-    if ! csrutil status 2>/dev/null | grep -qi disabled; then
-      echo "NOTE: SIP is enabled here — stage 40 will refuse to write and tell you to"
-      echo "relax SIP first (boot Recovery → csrutil disable). That is the real blocker."
+    [[ -n "$a" ]] || continue
+    host_names="$host_names ${a##*/}"
+    if app_exists "$a"; then
+      host_missing="$host_missing$(resolve_and_check "$a")"
+    else
+      host_missing="$host_missing ${a##*/}:NOT-INSTALLED(set FB_RUN_HOST if the agent launches from a different app)"
     fi
-    exit 1; }
-  echo "all installed run-wrapper apps pre-granted"'
+  done
+  IFS=$OLDIFS
+
+  # Advisory = every other installed wrapper app (never hosts a run).
+  advisory_missing=""
+  for name in Terminal iTerm Ghostty WezTerm kitty Alacritty Warp "Visual Studio Code" Cursor "Google Chrome"; do
+    case " $host_names " in *" $name "*) continue;; esac
+    advisory_missing="$advisory_missing$(resolve_and_check "$name")"
+  done
+
+  [[ -n "${advisory_missing// }" ]] && echo "advisory (non-host apps, not gating):$advisory_missing"
+
+  if [[ -n "${host_missing// }" ]]; then
+    echo "run host missing TCC grants:$host_missing"
+    echo "the run host (${host_names# }) launches the agent, so a missing grant here"
+    echo "= a guaranteed mid-run dialog. fix: sudo ./machine/40-tcc.sh"
+    if ! csrutil status 2>/dev/null | grep -qi disabled; then
+      echo "SIP is on, so stage 40 will instead OPEN the Privacy panes — add the host"
+      echo "app under Full Disk Access (one toggle covers all folders) and re-run verify."
+    fi
+    exit 1
+  fi
+  echo "run host (${host_names# }) fully granted; $([[ -n "${advisory_missing// }" ]] && echo "other apps advisory only" || echo "all wrapper apps granted too")"'
 
 # Self-KVM: the machine drives its own console GUI over loopback VNC. This is
 # the break-glass path (vncdotool skill) for dialogs/toggles the app-level
