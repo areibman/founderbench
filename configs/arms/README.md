@@ -1,10 +1,11 @@
 # Pilot-72h fleet arms — 7 Macs, 7 models, 1 run config
 
-Every Mac runs the SAME run config (`configs/pilot-72h.toml`). The only thing
-that differs per machine is the model block in `credentials.env` — copy exactly
-one `<arm>.env.example` from this directory into the Mac's
-`<repo-root>/credentials.env` (alongside the Inkbox/Stripe/meow/etc. values)
-and fill in the key.
+Every Mac runs the SAME run config (`configs/pilot-72h.toml`). What differs
+per machine is the model block and the Inkbox identity in `credentials.env` —
+each arm file carries BOTH, so copy exactly one `<arm>.env.example` from this
+directory into the Mac's `<repo-root>/credentials.env` (replacing the
+template's model and Inkbox blocks, alongside the Stripe/meow/etc. values)
+and fill in the model key + Inkbox fields.
 
 The harness is provider-shape-agnostic on purpose: plain provider keys,
 OpenRouter, and Azure all collapse to the same triple. OpenCode talks only to
@@ -52,10 +53,12 @@ Anthropic's compat-layer requirement that every request carry `max_tokens`
 
 ## Per-machine provisioning (each of the 7 Macs)
 
-1. `cp configs/credentials.env.example credentials.env`, fill the shared
-   sections (Inkbox, Stripe, meow, Exa, Browserbase — all per-agent, see
-   `docs/mac-checklist.md` §4), then replace the model block with this arm's
-   `configs/arms/<arm>.env.example` contents and fill the key.
+1. `cp configs/credentials.env.example credentials.env`, fill the remaining
+   sections (Stripe, meow, Exa, Browserbase — all per-agent, see
+   `docs/mac-checklist.md` §4; or leave them empty and store them as Inkbox
+   vault secrets), then replace the model block AND the Inkbox block with this
+   arm's `configs/arms/<arm>.env.example` contents and fill the model key +
+   Inkbox identity fields.
 2. `machine/60-credentials.sh` — the model check does a live chat-completion
    round trip against the arm's real upstream. **This is the gate that catches
    a wrong model id, a dead endpoint, or an unfunded key.**
