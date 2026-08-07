@@ -59,9 +59,22 @@ v "playwriter: real-Chrome CDP session + navigation + relay" bash -c '
   playwriter browser start "$CHROME" --user-data-dir "$HOME/.playwriter/fb-profile" >/dev/null 2>&1 || true
   for _ in $(seq 1 20); do nc -z 127.0.0.1 9222 >/dev/null 2>&1 && break; sleep 1; done
   nc -z 127.0.0.1 9222 >/dev/null 2>&1 || { echo "Chrome did not expose a CDP port after browser start"; exit 1; }
+  # Port 9222 must be owned by STOCK CHROME, not just any CDP endpoint.
+  # Electron/CEF apps (a leftover runner, cmux, ...) also serve
+  # /devtools/browser/ and pass a UA sniff (their UA carries a normal Chrome/
+  # token), but they reject Browser.setDownloadBehavior and the Playwright
+  # attach dies with "Browser context management is not supported". Checking
+  # the listening process path is authoritative.
+  CDP_PID=$(lsof -nP -tiTCP:9222 -sTCP:LISTEN 2>/dev/null | head -1)
+  CDP_EXE=$(ps -o comm= -p "${CDP_PID:-0}" 2>/dev/null || true)
+  if [[ "$CDP_EXE" != "$CHROME" ]]; then
+    echo "port 9222 is not stock Google Chrome — another app is squatting the CDP port:"
+    echo "  pid ${CDP_PID:-?}: ${CDP_EXE:-unknown}"
+    exit 1
+  fi
   UA=$(curl -s --max-time 5 http://127.0.0.1:9222/json/version | jq -r ".\"User-Agent\" // empty")
   case "$UA" in
-    *HeadlessChrome*|*"Chrome for Testing"*) echo "browser advertises a bot user-agent: $UA"; exit 1 ;;
+    *HeadlessChrome*|*"Chrome for Testing"*|*Electron*) echo "browser advertises a bot/embedded user-agent: $UA"; exit 1 ;;
   esac
   SID=$(playwriter session new --direct 2>&1 | sed -n "s/^Session \([0-9][0-9]*\) created.*/\1/p" | head -1)
   [[ -n "$SID" ]] || { echo "could not attach to Chrome over CDP (session new --direct)"; exit 1; }
