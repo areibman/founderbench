@@ -29,7 +29,9 @@ resolve() { sudo -u "$AGENT_USER" -H bash -lc "command -v $1" 2>/dev/null || tru
 CLIENTS=()
 for cmd in axmcp xcmcp ax xc computer-use-mcp peekaboo opencode node; do
   p="$(resolve "$cmd")"
-  [[ -n "$p" ]] && CLIENTS+=("$p")
+  # if-form, not `[[ ]] &&`: under set -e a failing && chain as the last loop
+  # statement kills the whole script the first time something is not installed
+  if [[ -n "$p" ]]; then CLIENTS+=("$p"); fi
 done
 CLIENTS+=("/Applications/Utilities/Terminal.app" "/System/Applications/Utilities/Terminal.app")
 
@@ -57,13 +59,18 @@ fi
 APP_BUNDLES=()
 resolve_app() {  # bare name -> first matching bundle; absolute path passed through
   local q="$1" base
-  if [[ "$q" == /* && -d "$q" ]]; then APP_BUNDLES+=("$q"); return; fi
+  if [[ "$q" == /* && -d "$q" ]]; then APP_BUNDLES+=("$q"); return 0; fi
   for base in "/Applications" "/Applications/Utilities" "/System/Applications/Utilities" "$AGENT_HOME/Applications"; do
-    [[ -d "$base/$q.app" ]] && { APP_BUNDLES+=("$base/$q.app"); return; }
+    if [[ -d "$base/$q.app" ]]; then APP_BUNDLES+=("$base/$q.app"); return 0; fi
   done
+  # Not installed is fine — but return 0 explicitly, or under set -e the first
+  # absent app (e.g. no iTerm) exits the script before any grant is written.
+  # That silent death is exactly what happened on hb-41.
+  return 0
 }
 for a in "${DEFAULT_APPS[@]}" ${EXTRA_APPS+"${EXTRA_APPS[@]}"}; do
-  [[ -n "$a" ]] && resolve_app "$a"
+  [[ -n "$a" ]] || continue
+  resolve_app "$a"
 done
 
 bundle_id() {  # best-effort CFBundleIdentifier for an .app path
@@ -139,7 +146,7 @@ grant_apps() {
   local granted=0 app bid indirect
   for app in ${APP_BUNDLES+"${APP_BUNDLES[@]}"}; do
     [[ -d "$app" ]] || continue
-    bid="$(bundle_id "$app")"
+    bid="$(bundle_id "$app")" || bid=""
     for service in "${APP_SERVICES[@]}"; do
       indirect="UNUSED"
       [[ "$service" == "kTCCServiceAppleEvents" ]] && indirect="com.apple.systemevents"
