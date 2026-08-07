@@ -163,48 +163,40 @@ grant_apps() {
   fi
 }
 
-# TCC protects its own database: even as root, sqlite3 gets "authorization
-# denied" unless the RESPONSIBLE process (the terminal hosting this shell)
-# holds Full Disk Access. Without this preflight the stage ran to completion
-# writing 0 grants — observed on hb-38, where it was run from cmux (no FDA)
-# and every mid-run folder dialog it was supposed to prevent still fired.
+# SIP is THE lever for this whole stage. TCC.db (both user and system) is
+# SIP-protected: with SIP ENABLED, even root cannot write it unless the calling
+# process holds Full Disk Access, and Screen Recording / FDA grants (system db
+# only) are unattainable by any script at all — there is no Apple-supported CLI
+# to grant TCC. With SIP DISABLED, root writes both dbs directly from ANY
+# terminal (cmux included), no FDA dance. So the fleet standard is SIP off, and
+# this stage is only fully effective there.
 #
-# Self-heal: sshd IS trusted (FDA by default when Remote Login is on), so when
-# the hosting terminal is not, re-launch this same stage over SSH to localhost
-# instead of failing. Key setup is non-interactive: a dedicated ed25519 key in
-# the agent's ~/.ssh, appended to authorized_keys, used only for this hop.
+# (History: an earlier version tried to self-heal a non-FDA terminal by
+# re-launching over SSH — sshd can hold FDA. It recursed ~40x on hb-41 because
+# sudo strips the guard env var, and it can't work anyway when "Allow full disk
+# access for remote users" is off. Removed: on a SIP-off box it's unnecessary,
+# on a SIP-on box it's insufficient.)
+if ! sip_relaxed; then
+  fail "SIP is ENABLED — this stage cannot provision TCC on this machine."
+  fail "  csrutil: $(csrutil status 2>/dev/null || echo unknown)"
+  fail "Screen Recording + Full Disk Access live in the SIP-protected system"
+  fail "TCC.db; no script can write them while SIP is on. The fleet standard is"
+  fail "to relax SIP on these dedicated appliances:"
+  fail "  1. shut down, boot to Recovery (Apple Silicon: hold power → Options)"
+  fail "  2. Utilities → Terminal → 'csrutil disable' → reboot"
+  fail "  3. re-run: sudo ./machine/40-tcc.sh   (writes all grants directly, no FDA needed)"
+  fail "Alternative without relaxing SIP: enroll in MDM and push a PPPC profile,"
+  fail "or grant each app manually in System Settings → Privacy & Security."
+  exit 1
+fi
+
+# SIP is off: root can write both dbs directly from here. Sanity-check the
+# write path anyway so a schema mismatch or an unexpected lock surfaces as a
+# clear failure rather than 0 silent grants.
 if ! sqlite3 "$USER_TCC" "SELECT count(*) FROM access;" >/dev/null 2>&1; then
-  if [[ -n "${FB_TCC_SSH_HOP:-}" ]]; then
-    fail "TCC.db still unreadable even over SSH — sshd itself lacks Full Disk Access."
-    fail "Enable: System Settings → General → Sharing → Remote Login (ⓘ) →"
-    fail "  'Allow full disk access for remote users', then re-run this stage."
-    fail "Or grant the terminal app FDA manually: System Settings → Privacy & Security → Full Disk Access."
-    exit 1
-  fi
-  warn "this terminal lacks Full Disk Access — TCC refuses db writes from it."
-  log "re-launching over SSH to localhost (sshd holds FDA)"
-  HOP_KEY="$AGENT_HOME/.ssh/fb_tcc_localhost"
-  sudo -u "$AGENT_USER" -H bash -c '
-    set -e
-    umask 077
-    mkdir -p "$HOME/.ssh"
-    [[ -f "'"$HOP_KEY"'" ]] || ssh-keygen -q -t ed25519 -N "" -f "'"$HOP_KEY"'"
-    touch "$HOME/.ssh/authorized_keys" && chmod 600 "$HOME/.ssh/authorized_keys"
-    grep -qxF "$(cat "'"$HOP_KEY"'.pub")" "$HOME/.ssh/authorized_keys" \
-      || cat "'"$HOP_KEY"'.pub" >> "$HOME/.ssh/authorized_keys"
-  '
-  if sudo -u "$AGENT_USER" -H ssh -i "$HOP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-      "$AGENT_USER@localhost" \
-      "cd $(printf %q "$(pwd)") && FB_TCC_SSH_HOP=1 FB_TCC_APPS=$(printf %q "${FB_TCC_APPS:-}") sudo ./40-tcc.sh"; then
-    ok "stage 40 completed via SSH hop"
-    exit 0
-  else
-    fail "SSH hop failed (Remote Login off, or passwordless sudo missing for $AGENT_USER)."
-    fail "Manual paths:"
-    fail "  a) enable Remote Login + 'Allow full disk access for remote users', re-run this stage"
-    fail "  b) System Settings → Privacy & Security → Full Disk Access → enable your terminal app, re-run"
-    exit 1
-  fi
+  fail "SIP is off but $USER_TCC is still unreadable ($(sqlite3 "$USER_TCC" 'SELECT 1;' 2>&1 | head -1))."
+  fail "Unexpected — check the db exists and is not mid-migration, then re-run."
+  exit 1
 fi
 
 log "Writing user TCC grants"
@@ -216,16 +208,8 @@ else
 fi
 
 log "Writing system TCC grants (Accessibility/Screen Recording/FDA live here)"
-if sip_relaxed; then
-  grant_all "$SYS_TCC" "system"
-  grant_apps "$SYS_TCC" "system"
-else
-  warn "SIP is enabled — cannot write system TCC.db."
-  warn "Options:"
-  warn "  a) boot to Recovery, run 'csrutil disable', re-run this stage (accepted tradeoff on this appliance)"
-  warn "  b) enroll in MDM and push a PPPC profile granting these services"
-  warn "  c) grant manually in System Settings → Privacy & Security for each binary listed above"
-fi
+grant_all "$SYS_TCC" "system"
+grant_apps "$SYS_TCC" "system"
 
 log "Restarting tccd so grants take effect"
 launchctl kickstart -k system/com.apple.tccd 2>/dev/null || true

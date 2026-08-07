@@ -138,18 +138,16 @@ v "screencapture works (Screen Recording TCC)" bash -c '
     exit 0
   fi
   cat /tmp/fb-verify-screen.err 2>/dev/null
-  echo "Screen Recording is not granted to this session'\''s responsible app."
-  echo "This grant ONLY works from the SYSTEM TCC.db, which 40-tcc.sh can only"
-  echo "write when SIP is relaxed. On this machine:"
+  echo "Screen Recording is not granted. It lives ONLY in the SIP-protected system"
+  echo "TCC.db, so no script can grant it while SIP is on. On this machine:"
   echo "  csrutil: $(csrutil status 2>/dev/null || echo unknown)"
   if csrutil status 2>/dev/null | grep -qi disabled; then
-    echo "fix: sudo ./machine/40-tcc.sh — SIP is off so the system-db write will land"
-    echo "(the stage auto-hops over SSH if this terminal lacks Full Disk Access)"
+    echo "SIP is off, so this should just work: sudo ./machine/40-tcc.sh"
+    echo "(if it still fails, the grant did not land — re-run and watch for its ✓/warn lines)"
   else
-    echo "fix (pick one):"
-    echo "  a) fleet standard: boot Recovery → csrutil disable → re-run sudo ./machine/40-tcc.sh"
-    echo "  b) manual, this Mac only: System Settings → Privacy & Security → Screen"
-    echo "     Recording → enable cmux (and Terminal), then re-run verify"
+    echo "fix (fleet standard): boot Recovery → csrutil disable → reboot →"
+    echo "  sudo ./machine/40-tcc.sh   (then this check, and the folder grants, all pass)"
+    echo "one-Mac alternative: System Settings → Privacy & Security → Screen Recording → enable cmux"
   fi
   exit 1'
 v "AX API reachable (Accessibility TCC)" bash -c 'AXBIN=$(command -v ax || echo $HOME/go/bin/ax); "$AXBIN" apps 2>/dev/null | head -1 | grep -q .'
@@ -206,8 +204,11 @@ v "run-wrapper apps hold Accessibility + folder TCC (no first-run dialog)" bash 
   fi
   [[ -z "$missing" ]] || {
     echo "missing TCC grants:$missing"
-    echo "fix: sudo ./machine/40-tcc.sh — if this terminal lacks Full Disk Access it"
-    echo "now re-launches itself over SSH to localhost automatically (sshd holds FDA)"
+    echo "fix: sudo ./machine/40-tcc.sh (writes these to the user TCC.db)."
+    if ! csrutil status 2>/dev/null | grep -qi disabled; then
+      echo "NOTE: SIP is enabled here — stage 40 will refuse to write and tell you to"
+      echo "relax SIP first (boot Recovery → csrutil disable). That is the real blocker."
+    fi
     exit 1; }
   echo "all installed run-wrapper apps pre-granted"'
 
