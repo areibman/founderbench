@@ -120,7 +120,7 @@ if [[ -n "${BROWSERBASE_API_KEY:-}" && -n "${BROWSERBASE_PROJECT_ID:-}" ]]; then
       -H "X-BB-API-Key: $BROWSERBASE_API_KEY" -H "Content-Type: application/json" \
       -d "{\"status\":\"REQUEST_RELEASE\"}" >/dev/null || true'
 else
-  warn "BROWSERBASE_API_KEY/PROJECT_ID not set — the CAPTCHA fallback is OUT of the tool surface this block (also remove the browserbase skill + charter mention)"
+  warn "BROWSERBASE_API_KEY/PROJECT_ID not set (credentials.env, or Inkbox vault secrets named BROWSERBASE_API_KEY / BROWSERBASE_PROJECT_ID) — without them the CAPTCHA fallback is OUT of the tool surface this block (also remove the browserbase skill + charter mention)"
 fi
 
 log "── Inkbox (agent identity: email, vault, tunnel) ──"
@@ -198,7 +198,7 @@ if [[ -n "${STRIPE_API_KEY:-}" ]]; then
       exit 1
     fi'
 else
-  fail "STRIPE_API_KEY not set — the agent has no way to charge anyone"; FAILURES=$((FAILURES+1))
+  fail "STRIPE_API_KEY not set — the agent has no way to charge anyone (set it in credentials.env, or store an Inkbox vault secret named STRIPE_API_KEY)"; FAILURES=$((FAILURES+1))
 fi
 
 log "── Exa ──"
@@ -208,7 +208,7 @@ if [[ -n "${EXA_API_KEY:-}" ]]; then
       -H "x-api-key: $EXA_API_KEY" -H "Content-Type: application/json" \
       -d '{"query":"ping","numResults":1}'
 else
-  warn "EXA_API_KEY not set (exa MCP can also use OAuth; token recommended)"
+  warn "EXA_API_KEY not set (credentials.env, or an Inkbox vault secret named EXA_API_KEY)"
 fi
 
 log "── meow.com banking (REST API) ──"
@@ -306,7 +306,7 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
       || echo "revoke failed — probe card is single-use with a \$1 limit; revoke manually: POST /cards/$CID/revoke"
     [[ -z "$PANFAIL" ]] || { echo "$PANFAIL"; exit 1; }'
 else
-  fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow REST API with this key (dashboard-issued, x-api-key header)"; FAILURES=$((FAILURES+1))
+  fail "MEOW_API_TOKEN not set — the agent's banking runs on the meow REST API with this key (dashboard-issued, x-api-key header). Set it in credentials.env, or store an Inkbox vault secret named MEOW_API_TOKEN"; FAILURES=$((FAILURES+1))
 fi
 
 log "── OAuth-based MCPs (verified in stage 65) ──"

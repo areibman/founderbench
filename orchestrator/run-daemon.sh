@@ -9,12 +9,14 @@ cd "$FB_ROOT"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/go/bin:$PATH"
 
-# Unlock the build keychain for this login session (idempotent).
-if [[ -f "$FB_ROOT/credentials.env" ]]; then
-  set -a; source "$FB_ROOT/credentials.env"; set +a
-  if [[ -n "${FB_KEYCHAIN_PASSWORD:-}" ]]; then
-    security unlock-keychain -p "$FB_KEYCHAIN_PASSWORD" founderbench.keychain-db 2>/dev/null || true
-  fi
+# Load credentials (credentials.env + Inkbox-vault hydration for operational
+# keys not in the file — see lib.sh) so the orchestrator and everything under
+# it inherit them, then unlock the build keychain (idempotent).
+# shellcheck disable=SC1091
+source "$FB_ROOT/machine/lib.sh"
+load_credentials
+if [[ -n "${FB_KEYCHAIN_PASSWORD:-}" ]]; then
+  security unlock-keychain -p "$FB_KEYCHAIN_PASSWORD" founderbench.keychain-db 2>/dev/null || true
 fi
 
 # Find the newest run with a checkpoint but no COMPLETED marker → resume it.

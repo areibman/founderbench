@@ -29,7 +29,8 @@ require_not_root() {
   [[ $EUID -ne 0 ]] || die "run this script as the agent user, not root"
 }
 
-# Load credentials.env into the environment if present.
+# Load credentials.env into the environment if present, then fill any
+# still-empty operational keys from the agent's Inkbox vault.
 load_credentials() {
   if [[ -f "$FB_CREDENTIALS" ]]; then
     set -a
@@ -37,6 +38,51 @@ load_credentials() {
     source "$FB_CREDENTIALS"
     set +a
   fi
+  hydrate_from_vault
+}
+
+# Vault-backed credentials. Any of these vars left empty by credentials.env is
+# fetched from the Inkbox vault, matched by secret NAME == env var name (case-
+# insensitive). credentials.env always wins over the vault.
+#
+# This is a fixed ALLOWLIST on purpose: the agent writes to its own vault
+# mid-run, so hydrating arbitrary secret names would let it inject environment
+# into its own harness at the next resume. Machine plumbing (keychain, macOS
+# password) and the per-arm model key stay file-only — they must work with no
+# network and no Inkbox.
+FB_VAULT_VARS=(STRIPE_API_KEY MEOW_API_TOKEN EXA_API_KEY BROWSERBASE_API_KEY BROWSERBASE_PROJECT_ID)
+
+hydrate_from_vault() {
+  [[ -n "${INKBOX_API_KEY:-}" && -n "${INKBOX_VAULT_KEY:-}" ]] || return 0
+  local missing=() v
+  for v in "${FB_VAULT_VARS[@]}"; do
+    [[ -z "${!v:-}" ]] && missing+=("$v")
+  done
+  [[ ${#missing[@]} -gt 0 ]] || return 0
+  command -v inkbox >/dev/null 2>&1 || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  local secrets
+  if ! secrets=$(inkbox vault secrets --json 2>/dev/null); then
+    warn "Inkbox vault unreachable — not hydrating: ${missing[*]}"
+    return 0
+  fi
+  local sid val
+  for v in "${missing[@]}"; do
+    # Secret list shape is defensive: accept a bare array or a wrapper object,
+    # and name/label/title as the display field.
+    sid=$(jq -r --arg n "$v" '
+      [ (if type == "array" then . else (.secrets // .data // []) end)[]
+        | select(((.name // .label // .title // "") | ascii_upcase) == $n) ]
+      [0] | (.id // .secret_id // empty)' <<<"$secrets" 2>/dev/null)
+    [[ -n "$sid" ]] || continue
+    val=$(inkbox vault get "$sid" --json 2>/dev/null \
+      | jq -r '.value // .secret // .key // .api_key // .password // .data.value // empty' 2>/dev/null)
+    if [[ -n "$val" ]]; then
+      export "$v=$val"
+    else
+      warn "vault secret for $v exists (id $sid) but no value field could be extracted"
+    fi
+  done
 }
 
 # check <label> <command...>  — runs command silently, prints ✓/✗, returns status.
