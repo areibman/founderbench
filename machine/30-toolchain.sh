@@ -95,11 +95,26 @@ brew list peekaboo >/dev/null 2>&1 || brew install steipete/tap/peekaboo \
 command -v peekaboo >/dev/null 2>&1 && ok "peekaboo $(peekaboo --version 2>/dev/null | head -1 || echo installed)"
 
 log "OpenCode — agent harness"
-if ! command -v opencode >/dev/null 2>&1; then
+# Two unrelated projects ship an `opencode` binary. The harness needs
+# sst/opencode (has `opencode serve`); the archived Go opencode-ai/opencode
+# does not, and its presence on PATH used to satisfy this check while every
+# `opencode serve` downstream failed with "unknown flag: --port".
+opencode_is_real() {
+  command -v opencode >/dev/null 2>&1 && opencode serve --help >/dev/null 2>&1
+}
+if ! opencode_is_real; then
+  if command -v opencode >/dev/null 2>&1; then
+    warn "opencode on PATH has no 'serve' command (imposter Go build at $(command -v opencode)) — replacing"
+    brew uninstall opencode >/dev/null 2>&1 || npm uninstall -g opencode >/dev/null 2>&1 || true
+  fi
   brew install sst/tap/opencode 2>/dev/null || npm install -g opencode-ai \
     || warn "opencode install failed; see https://opencode.ai/docs"
 fi
-command -v opencode >/dev/null 2>&1 && ok "opencode $(opencode --version 2>/dev/null || echo installed)"
+if opencode_is_real; then
+  ok "opencode $(opencode --version 2>/dev/null || echo installed) (sst build, serve OK)"
+else
+  warn "opencode still missing or wrong build — 'opencode serve' unavailable"
+fi
 
 log "Fastlane (fallback only — asc is primary)"
 brew list fastlane >/dev/null 2>&1 || brew install fastlane || warn "fastlane install failed (optional)"

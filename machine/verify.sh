@@ -378,6 +378,13 @@ v "workspace opencode.json rendered for this arm (founderbench/\$MODEL_ID)" bash
   jq -e ".provider.founderbench.models[\"$MODEL_ID\"]" "$HOME/opencode.json" >/dev/null || {
     echo "model \"$MODEL_ID\" missing from provider.founderbench.models — re-run 70-agent-workspace.sh"; exit 1; }'
 v "opencode serve starts + health"     bash -c '
+  # Wrong-binary tripwire first: the archived Go opencode-ai project also
+  # installs an `opencode` and shadows the sst build (no serve command).
+  opencode serve --help >/dev/null 2>&1 || {
+    echo "this opencode ($(command -v opencode)) has no \"serve\" command —"
+    echo "it is the archived Go opencode-ai build, not sst/opencode."
+    echo "fix: re-run machine/30-toolchain.sh (replaces it with sst/tap/opencode)"
+    exit 1; }
   opencode serve --port 41299 >/tmp/fb-verify-opencode.log 2>&1 &
   OC_PID=$!
   for i in $(seq 1 30); do
@@ -386,7 +393,10 @@ v "opencode serve starts + health"     bash -c '
   done
   RES=$(curl -sf http://127.0.0.1:41299/global/health)
   kill $OC_PID 2>/dev/null
-  grep -q healthy <<<"$RES"'
+  grep -q healthy <<<"$RES" || {
+    echo "no healthy response on :41299 — server log:"
+    tail -n 15 /tmp/fb-verify-opencode.log
+    exit 1; }'
 
 echo
 log "════════════════════════════════════"
