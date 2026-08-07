@@ -47,10 +47,9 @@ load_credentials() {
 #
 # This is a fixed ALLOWLIST on purpose: the agent writes to its own vault
 # mid-run, so hydrating arbitrary secret names would let it inject environment
-# into its own harness at the next resume. Machine plumbing (keychain, macOS
-# password) and the per-arm model key stay file-only — they must work with no
-# network and no Inkbox.
-FB_VAULT_VARS=(STRIPE_API_KEY MEOW_API_TOKEN EXA_API_KEY BROWSERBASE_API_KEY BROWSERBASE_PROJECT_ID)
+# into its own harness at the next resume. Keychain plumbing and the per-arm
+# model key stay file-only — they must work with no network and no Inkbox.
+FB_VAULT_VARS=(STRIPE_API_KEY MEOW_API_TOKEN EXA_API_KEY BROWSERBASE_API_KEY BROWSERBASE_PROJECT_ID MACOS_ACCOUNT_PASSWORD)
 
 # Acceptable vault secret names per env var (space-separated, first match
 # wins). Aliases absorb naming drift — e.g. meow's env var is MEOW_API_TOKEN
@@ -58,8 +57,9 @@ FB_VAULT_VARS=(STRIPE_API_KEY MEOW_API_TOKEN EXA_API_KEY BROWSERBASE_API_KEY BRO
 # MEOW_API_KEY.
 vault_names_for() {
   case "$1" in
-    MEOW_API_TOKEN) echo "MEOW_API_TOKEN MEOW_API_KEY" ;;
-    *)              echo "$1" ;;
+    MEOW_API_TOKEN)         echo "MEOW_API_TOKEN MEOW_API_KEY" ;;
+    MACOS_ACCOUNT_PASSWORD) echo "MACOS_ACCOUNT_PASSWORD MACOS_PASSWORD" ;;
+    *)                      echo "$1" ;;
   esac
 }
 

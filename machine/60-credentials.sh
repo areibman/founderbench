@@ -276,7 +276,9 @@ if [[ -n "${MEOW_API_TOKEN:-}" ]]; then
   # not nickname + spending_controls. Send the union of both schemas so the
   # probe survives either vintage; unknown fields are ignored.
   must "meow REST: card issuance WRITE path (create + PAN reveal + revoke)" bash -c "$(declare -f meow_api); "'
-    OUT=$(meow_api POST /cards "{\"nickname\":\"fb-verify-probe\",\"amount\":1,\"merchant_name\":\"FounderBench verify\",\"task_description\":\"preflight write-path probe — revoked immediately\",\"spending_controls\":{\"per_transaction_limit\":1},\"single_use\":true,\"purpose\":\"preflight write-path probe — revoked immediately\"}") \
+    # purpose/task_description must be printable ASCII (^[ -~]+$) — the live
+    # API 400s on anything else (an em dash cost us a verify cycle).
+    OUT=$(meow_api POST /cards "{\"nickname\":\"fb-verify-probe\",\"amount\":1,\"merchant_name\":\"FounderBench verify\",\"task_description\":\"preflight write-path probe - revoked immediately\",\"spending_controls\":{\"per_transaction_limit\":1},\"single_use\":true,\"purpose\":\"preflight write-path probe - revoked immediately\"}") \
       || { echo "card create rejected:"; echo "$OUT"; exit 1; }
     CID=$(jq -r ".metadata.card_id // .card_id // .id // empty" <<<"$OUT")
     [[ -n "$CID" ]] || { echo "card created but no id in response:"; echo "$OUT"; exit 1; }
