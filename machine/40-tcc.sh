@@ -168,13 +168,43 @@ grant_apps() {
 # holds Full Disk Access. Without this preflight the stage ran to completion
 # writing 0 grants — observed on hb-38, where it was run from cmux (no FDA)
 # and every mid-run folder dialog it was supposed to prevent still fired.
+#
+# Self-heal: sshd IS trusted (FDA by default when Remote Login is on), so when
+# the hosting terminal is not, re-launch this same stage over SSH to localhost
+# instead of failing. Key setup is non-interactive: a dedicated ed25519 key in
+# the agent's ~/.ssh, appended to authorized_keys, used only for this hop.
 if ! sqlite3 "$USER_TCC" "SELECT count(*) FROM access;" >/dev/null 2>&1; then
-  fail "cannot open $USER_TCC (authorization denied)"
-  fail "this terminal lacks Full Disk Access, so NO grants can be written from it."
-  fail "Fix, either:"
-  fail "  a) run this stage over SSH — sshd holds FDA: ssh $AGENT_USER@localhost 'cd $(pwd) && sudo ./40-tcc.sh'"
-  fail "  b) System Settings → Privacy & Security → Full Disk Access → enable your terminal app, then re-run"
-  exit 1
+  if [[ -n "${FB_TCC_SSH_HOP:-}" ]]; then
+    fail "TCC.db still unreadable even over SSH — sshd itself lacks Full Disk Access."
+    fail "Enable: System Settings → General → Sharing → Remote Login (ⓘ) →"
+    fail "  'Allow full disk access for remote users', then re-run this stage."
+    fail "Or grant the terminal app FDA manually: System Settings → Privacy & Security → Full Disk Access."
+    exit 1
+  fi
+  warn "this terminal lacks Full Disk Access — TCC refuses db writes from it."
+  log "re-launching over SSH to localhost (sshd holds FDA)"
+  HOP_KEY="$AGENT_HOME/.ssh/fb_tcc_localhost"
+  sudo -u "$AGENT_USER" -H bash -c '
+    set -e
+    umask 077
+    mkdir -p "$HOME/.ssh"
+    [[ -f "'"$HOP_KEY"'" ]] || ssh-keygen -q -t ed25519 -N "" -f "'"$HOP_KEY"'"
+    touch "$HOME/.ssh/authorized_keys" && chmod 600 "$HOME/.ssh/authorized_keys"
+    grep -qxF "$(cat "'"$HOP_KEY"'.pub")" "$HOME/.ssh/authorized_keys" \
+      || cat "'"$HOP_KEY"'.pub" >> "$HOME/.ssh/authorized_keys"
+  '
+  if sudo -u "$AGENT_USER" -H ssh -i "$HOP_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+      "$AGENT_USER@localhost" \
+      "cd $(printf %q "$(pwd)") && FB_TCC_SSH_HOP=1 FB_TCC_APPS=$(printf %q "${FB_TCC_APPS:-}") sudo ./40-tcc.sh"; then
+    ok "stage 40 completed via SSH hop"
+    exit 0
+  else
+    fail "SSH hop failed (Remote Login off, or passwordless sudo missing for $AGENT_USER)."
+    fail "Manual paths:"
+    fail "  a) enable Remote Login + 'Allow full disk access for remote users', re-run this stage"
+    fail "  b) System Settings → Privacy & Security → Full Disk Access → enable your terminal app, re-run"
+    exit 1
+  fi
 fi
 
 log "Writing user TCC grants"

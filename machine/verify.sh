@@ -133,7 +133,25 @@ else
   # no p12 and no ASC key is the expected default — simulator builds only.
   log "  no p12 and no ASC key — iOS unprovisioned; skipping signing check (simulator-only)"
 fi
-v "screencapture works (Screen Recording TCC)" bash -c 'screencapture -x /tmp/fb-verify-screen.png && [[ -s /tmp/fb-verify-screen.png ]]'
+v "screencapture works (Screen Recording TCC)" bash -c '
+  if screencapture -x /tmp/fb-verify-screen.png 2>/tmp/fb-verify-screen.err && [[ -s /tmp/fb-verify-screen.png ]]; then
+    exit 0
+  fi
+  cat /tmp/fb-verify-screen.err 2>/dev/null
+  echo "Screen Recording is not granted to this session'\''s responsible app."
+  echo "This grant ONLY works from the SYSTEM TCC.db, which 40-tcc.sh can only"
+  echo "write when SIP is relaxed. On this machine:"
+  echo "  csrutil: $(csrutil status 2>/dev/null || echo unknown)"
+  if csrutil status 2>/dev/null | grep -qi disabled; then
+    echo "fix: sudo ./machine/40-tcc.sh — SIP is off so the system-db write will land"
+    echo "(the stage auto-hops over SSH if this terminal lacks Full Disk Access)"
+  else
+    echo "fix (pick one):"
+    echo "  a) fleet standard: boot Recovery → csrutil disable → re-run sudo ./machine/40-tcc.sh"
+    echo "  b) manual, this Mac only: System Settings → Privacy & Security → Screen"
+    echo "     Recording → enable cmux (and Terminal), then re-run verify"
+  fi
+  exit 1'
 v "AX API reachable (Accessibility TCC)" bash -c 'AXBIN=$(command -v ax || echo $HOME/go/bin/ax); "$AXBIN" apps 2>/dev/null | head -1 | grep -q .'
 v "osascript System Events (AppleEvents TCC)" osascript -e 'tell application "System Events" to count processes'
 v "peekaboo permissions granted" bash -c 'peekaboo permissions status 2>&1 | grep -qiv denied'
@@ -186,7 +204,11 @@ v "run-wrapper apps hold Accessibility + folder TCC (no first-run dialog)" bash 
     done
     IFS=$OLDIFS
   fi
-  [[ -z "$missing" ]] || { echo "missing TCC grants:$missing — re-run: sudo ./machine/40-tcc.sh"; exit 1; }
+  [[ -z "$missing" ]] || {
+    echo "missing TCC grants:$missing"
+    echo "fix: sudo ./machine/40-tcc.sh — if this terminal lacks Full Disk Access it"
+    echo "now re-launches itself over SSH to localhost automatically (sshd holds FDA)"
+    exit 1; }
   echo "all installed run-wrapper apps pre-granted"'
 
 # Self-KVM: the machine drives its own console GUI over loopback VNC. This is
