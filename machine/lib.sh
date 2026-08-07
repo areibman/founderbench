@@ -52,6 +52,17 @@ load_credentials() {
 # network and no Inkbox.
 FB_VAULT_VARS=(STRIPE_API_KEY MEOW_API_TOKEN EXA_API_KEY BROWSERBASE_API_KEY BROWSERBASE_PROJECT_ID)
 
+# Acceptable vault secret names per env var (space-separated, first match
+# wins). Aliases absorb naming drift — e.g. meow's env var is MEOW_API_TOKEN
+# but the dashboard hands out an "API key", so vaults tend to hold it as
+# MEOW_API_KEY.
+vault_names_for() {
+  case "$1" in
+    MEOW_API_TOKEN) echo "MEOW_API_TOKEN MEOW_API_KEY" ;;
+    *)              echo "$1" ;;
+  esac
+}
+
 hydrate_from_vault() {
   [[ -n "${INKBOX_API_KEY:-}" && -n "${INKBOX_VAULT_KEY:-}" ]] || return 0
   local missing=() v
@@ -69,10 +80,13 @@ hydrate_from_vault() {
   local sid val
   for v in "${missing[@]}"; do
     # Secret list shape is defensive: accept a bare array or a wrapper object,
-    # and name/label/title as the display field.
-    sid=$(jq -r --arg n "$v" '
-      [ (if type == "array" then . else (.secrets // .data // []) end)[]
-        | select(((.name // .label // .title // "") | ascii_upcase) == $n) ]
+    # and name/label/title as the display field. Names come from
+    # vault_names_for (aliases allowed), compared case-insensitively.
+    sid=$(jq -r --arg names "$(vault_names_for "$v")" '
+      ($names | split(" ")) as $want
+      | [ (if type == "array" then . else (.secrets // .data // []) end)[]
+          | ((.name // .label // .title // "") | ascii_upcase) as $n
+          | select($want | index($n)) ]
       [0] | (.id // .secret_id // empty)' <<<"$secrets" 2>/dev/null)
     [[ -n "$sid" ]] || continue
     # `vault get --json` → {id, name, secretType, payload}. Payload by type:
