@@ -7,7 +7,10 @@
 #   - errSecInternalComponent (-34018)   → missing set-key-partition-list
 #
 # Inputs (credentials.env):
-#   FB_KEYCHAIN_PASSWORD   password for the build keychain (required)
+#   FB_KEYCHAIN_PASSWORD   password for the build keychain (generated and
+#                          persisted into credentials.env if not set — the
+#                          password protects nothing a user typed, it only
+#                          exists so the keychain can be unlocked headlessly)
 #   APPLE_CERT_P12         path to distribution certificate .p12 (optional here, required for signing)
 #   APPLE_CERT_P12_PASSWORD  password for the .p12
 #   PROVISIONING_PROFILES_DIR  dir of .mobileprovision files to install (optional)
@@ -24,11 +27,39 @@ KEYCHAIN="founderbench.keychain-db"
 KEYCHAIN_PATH="$HOME/Library/Keychains/$KEYCHAIN"
 PW="${FB_KEYCHAIN_PASSWORD:-}"
 
-[[ -n "$PW" ]] || die "FB_KEYCHAIN_PASSWORD not set in credentials.env"
+# Self-heal: no password → generate one and persist it to credentials.env so
+# every other consumer (verify.sh, run-daemon.sh, the orchestrator) reads the
+# same value. Alnum-only so it is safe to splice into sed/env files unquoted.
+if [[ -z "$PW" ]]; then
+  log "FB_KEYCHAIN_PASSWORD not set — generating and persisting to credentials.env"
+  if [[ ! -f "$FB_CREDENTIALS" ]]; then
+    cp "$FB_ROOT/configs/credentials.env.example" "$FB_CREDENTIALS"
+    chmod 600 "$FB_CREDENTIALS"
+    warn "created $FB_CREDENTIALS from configs/credentials.env.example — arm/model/credential values still need filling in"
+  fi
+  PW="$(openssl rand -hex 24)"
+  if grep -q '^FB_KEYCHAIN_PASSWORD=' "$FB_CREDENTIALS"; then
+    sed -i '' "s|^FB_KEYCHAIN_PASSWORD=.*|FB_KEYCHAIN_PASSWORD=\"$PW\"|" "$FB_CREDENTIALS"
+  else
+    printf '\nFB_KEYCHAIN_PASSWORD="%s"\n' "$PW" >> "$FB_CREDENTIALS"
+  fi
+  export FB_KEYCHAIN_PASSWORD="$PW"
+  ok "generated FB_KEYCHAIN_PASSWORD and saved it to $FB_CREDENTIALS"
+fi
 
 log "Creating dedicated build keychain"
 if [[ -f "$KEYCHAIN_PATH" ]]; then
-  ok "keychain exists: $KEYCHAIN"
+  if security unlock-keychain -p "$PW" "$KEYCHAIN" 2>/dev/null; then
+    ok "keychain exists and unlocks: $KEYCHAIN"
+  else
+    # Stale keychain from an old/lost password. It only ever holds what this
+    # stage puts in it (the signing cert, re-imported below), so recreating is
+    # lossless — and the only way forward, since the old password is gone.
+    warn "keychain exists but FB_KEYCHAIN_PASSWORD doesn't unlock it — recreating"
+    security delete-keychain "$KEYCHAIN" 2>/dev/null || rm -f "$KEYCHAIN_PATH"
+    security create-keychain -p "$PW" "$KEYCHAIN"
+    ok "recreated $KEYCHAIN"
+  fi
 else
   security create-keychain -p "$PW" "$KEYCHAIN"
   ok "created $KEYCHAIN"

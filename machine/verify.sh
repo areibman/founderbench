@@ -108,6 +108,16 @@ v "iOS simulator runtime present"      bash -c 'xcrun simctl list runtimes | gre
 v "a simulator device exists"          bash -c 'xcrun simctl list devices available | grep -qE "iPhone"'
 
 log "══ 3. Permissions (the zero-dialog gates) ══"
+# Keychain gate SELF-HEALS: stage 50 is idempotent — it generates and persists
+# FB_KEYCHAIN_PASSWORD when missing, and recreates the keychain when the
+# password no longer unlocks it. So instead of failing and telling a human to
+# go run it, run it here and then verify the result like any other check.
+if ! bash -c '[[ -f "$HOME/Library/Keychains/founderbench.keychain-db" ]] &&
+    security unlock-keychain -p "${FB_KEYCHAIN_PASSWORD:-}" founderbench.keychain-db' >/dev/null 2>&1; then
+  log "  build keychain missing or not unlockable — self-healing via 50-keychain.sh"
+  bash ./50-keychain.sh || true
+  load_credentials   # pick up a freshly generated FB_KEYCHAIN_PASSWORD
+fi
 v "build keychain exists"              bash -c '[[ -f "$HOME/Library/Keychains/founderbench.keychain-db" ]]'
 v "build keychain unlockable"          bash -c '
   security unlock-keychain -p "$FB_KEYCHAIN_PASSWORD" founderbench.keychain-db &&
