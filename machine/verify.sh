@@ -65,8 +65,11 @@ v "playwriter: real-Chrome CDP session + navigation + relay" bash -c '
   esac
   SID=$(playwriter session new --direct 2>&1 | sed -n "s/^Session \([0-9][0-9]*\) created.*/\1/p" | head -1)
   [[ -n "$SID" ]] || { echo "could not attach to Chrome over CDP (session new --direct)"; exit 1; }
-  JS="const p = await context.newPage(); await p.goto(\"https://example.com\"); console.log(\"FB_TITLE:\" + (await p.title())); await p.close()"
-  OUT=$(playwriter -s "$SID" -e "$JS" 2>&1)
+  # domcontentloaded + explicit timeouts: the default goto waits for the full
+  # load event and playwriter kills execution at 10s, which false-fails on a
+  # cold profile (first-run work) or a slow first fetch.
+  JS="const p = await context.newPage(); await p.goto(\"https://example.com\", { waitUntil: \"domcontentloaded\", timeout: 30000 }); console.log(\"FB_TITLE:\" + (await p.title())); await p.close()"
+  OUT=$(playwriter -s "$SID" --timeout 45000 -e "$JS" 2>&1)
   playwriter session delete "$SID" >/dev/null 2>&1 || true
   grep -q "FB_TITLE:Example Domain" <<<"$OUT" || { echo "navigation failed:"; echo "$OUT"; exit 1; }
   nc -z 127.0.0.1 19988 >/dev/null 2>&1 || { echo "relay is not listening on 127.0.0.1:19988 after a successful session"; exit 1; }
@@ -177,8 +180,13 @@ v "self-KVM: input round-trip (move+key accepted)" bash -c '
   "$VNCDO" -t 20 -s 127.0.0.1::5900 -u "$(whoami)" -p "$MACOS_ACCOUNT_PASSWORD" move 20 20 key esc 2>/tmp/fb-verify-vnc-input.err'
 
 log "══ 4. Credentials (live) ══"
-bash ./60-credentials.sh >/dev/null 2>&1 && { ok "60-credentials.sh passes"; PASS=$((PASS+1)); } \
-  || { fail "60-credentials.sh FAILED — run it directly for details"; FAIL=$((FAIL+1)); }
+# Stream stage 60 inline — its per-credential ✓/✗ lines ARE the diagnostics,
+# so hiding them and saying "run it directly" just made everyone run it twice.
+if bash ./60-credentials.sh 2>&1; then
+  ok "60-credentials.sh passes"; PASS=$((PASS+1))
+else
+  fail "60-credentials.sh FAILED (see ✗ lines above)"; FAIL=$((FAIL+1))
+fi
 
 log "══ 5. iOS build proof (OPTIONAL — no app is provisioned) ══"
 # Agents start from scratch, so at provisioning time there is normally no app

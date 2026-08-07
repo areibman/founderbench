@@ -49,7 +49,9 @@ check() {
   else
     fail "$label"
     # Surface the failure reason — a ✗ with no diagnostic is undebuggable.
-    [[ -n "$out" ]] && printf '%s\n' "$out" | tail -n 8 | sed 's/^/      │ /'
+    # 25 lines, not 8: error messages sit ABOVE their stack traces, and tail -8
+    # was serving up nothing but hono stack frames.
+    [[ -n "$out" ]] && printf '%s\n' "$out" | tail -n 25 | sed 's/^/      │ /'
     return 1
   fi
 }
