@@ -105,8 +105,13 @@ touch ~/founderbench/runs/<old-run-id>/COMPLETED
    `budget.*` event. Each one is either an environment bug (fix + verify.sh check)
    or evidence for the failure taxonomy.
 4. Snapshot the machine state if anything drifted: `sudo tmutil localsnapshot`.
-5. File the run summary in `docs/` (metrics + failure taxonomy classification).
-6. Export researcher-facing trace formats (both schema-validated by construction):
+5. **Evidence phase (72h fleet):** `docs/analysis-playbook.md` — prep
+   `steps.jsonl`, send investigators with `docs/investigation-guide.md`.
+   A human reviews the findings and writes the post. Incident codes
+   (`docs/trace-analysis-rubric.md`) are a later researcher pass, not that
+   hunt.
+6. File the run summary in `docs/` (metrics + failure taxonomy classification).
+7. Export researcher-facing trace formats (both schema-validated by construction):
 
 ```sh
 # deps are pinned in tracing/pyproject.toml + tracing/uv.lock

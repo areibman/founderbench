@@ -19,7 +19,7 @@ founderbench/
   configs/            # run configs (TOML), credentials template, agent workspace template
   runs/               # (gitignored) per-run artifacts: traces, screenshots, logs
   replay/             # minimal web UI to browse a run's trace
-  docs/               # mac checklist, runbook, failure taxonomy
+  docs/               # mac checklist, runbook, failure taxonomy, write-up / investigation
 ```
 
 ## Quick start

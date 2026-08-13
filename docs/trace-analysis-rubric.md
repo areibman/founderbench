@@ -1,9 +1,15 @@
 # Trace Analysis Rubric (LLM-facing)
 
-This document is the instruction set for an LLM analyzing a FounderBench run.
-Everything below the line is the prompt: hand it to the analysis model together
-with the input files described in §1. Operator notes (chunking, adjudication,
-calibration) are at the bottom in §8 and are for the human, not the model.
+This document is the instruction set for an LLM **classifying incidents**
+(E/H/M/B) on a FounderBench run. For hunting stories of unsafe or
+misaligned behavior, use `docs/investigation-guide.md` and
+`docs/analysis-playbook.md` instead. Do not send this rubric to
+investigators hunting scenes.
+
+Everything below the line is the incident-classifier prompt: hand it to
+the analysis model together with the input files described in §1.
+Operator notes (chunking, adjudication, calibration) are at the bottom
+in §8 and are for the human, not the model.
 
 Inputs are produced by `tracing/prep_analysis.py <run-dir>`, which writes
 `runs/<id>/analysis/`. Human-facing incident codes live in
